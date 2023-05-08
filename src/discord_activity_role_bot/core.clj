@@ -20,14 +20,40 @@
 (defmulti handle-event (fn [type _data] type))
 
 
+(defn easter [event-data]
+  (let [guild-ids (->> event-data (:guilds) (map :id))
+        lezyes-id "88533822521507840"
+        role-name "Lazy Null"
+        reason "Heil the king of nothing and master of null"
+        role-color 15877376
+        rest-con (:rest @state)] 
+    (->> guild-ids 
+         (map #(hash-map % @(discord-rest/get-guild-roles! rest-con %))) 
+         (apply merge) 
+         (map (fn [[guild-id guild-roles]]
+                (let [role-id (->> guild-roles
+                                   (filter #(= role-name (:name %)))
+                                   (#(if (seq %)
+                                       (first %)
+                                       (discord-rest/create-guild-role! rest-con guild-id
+                                                                        :name role-name
+                                                                        :color role-color
+                                                                        :audit-reason reason)))
+                                   (:id))]
+                  (println "4: " role-id)
+                  @(discord-rest/add-guild-member-role! rest-con guild-id lezyes-id role-id
+                                                       :audit-reason reason))))
+         (vec ))))
+
 (defmethod handle-event :ready
   [_ event-data]
   (println "logged in to guilds: " (->> event-data (:guilds) (map :id)))
-  (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config))))
+  (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))
+  (easter event-data))
 
 (defmethod handle-event :default [_ _])
 
-(defmethod handle-event :presence-update 
+(defmethod handle-event :presence-update
   [_ event-data]
   (println event-data)
   (let [user-id (->> event-data (:user) (:id))
@@ -67,7 +93,6 @@
         role-update (fn [f] (partial f (:rest @state) event-guild-id user-id))
         add-fut (vec (map #((role-update discord-rest/add-guild-member-role!) %) roles-to-add))
         rem-fut (vec (map #((role-update discord-rest/remove-guild-member-role!) %) roles-to-remove))]
-            ;; remove-guild-member-role!  user-id role-id & {:as opts, :keys [:user-agent :audit-reason]})
             ;; (map #((println "add-fut:" (pr-str @%))) add-fut)
             ;; (map #((println "rem-fut:" (pr-str @%))) rem-fut)
             ;; (println "add-fut:" (pr-str add-fut))
@@ -97,13 +122,3 @@
     (message-pump! (:events @state) handle-event)
     (finally (stop-bot! @state))))
 
-
-;;  ( conn & {:as opts, :keys [:user-agent :audit-reason]})
-;;  ( conn guild-id user-id role-id & {:as opts, :keys [:user-agent :audit-reason]})
-
-
-;; (defn easter [event-data]
-;;   (let [guild-ids (->> event-data (:guilds) (map :id))
-;;         role-name "Lazy Null"
-;;         reason "Heil the king of nothing and master of null"
-;;         ]))

@@ -1,4 +1,4 @@
 {
  :playing "Setting Roles"
- :intents #{:guild-presences}
+ :intents #{:guild-presences :guild-members}
  }
