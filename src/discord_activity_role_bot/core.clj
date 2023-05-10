@@ -15,7 +15,7 @@
 (def config (edn/read-string (slurp "config.edn")))
 (def token (->> "secret.edn" (slurp) (edn/read-string) (:token)))
 
-(def guild-roles (cheshire/parse-string (slurp "guild_games_roles_default.json") true))
+(def guild-roles (cheshire/parse-string (slurp "guild_games_roles_default.json") string/lower-case))
 
 (defmulti handle-event (fn [type _data] type))
 
@@ -40,10 +40,9 @@
                                                                         :color role-color
                                                                         :audit-reason reason)))
                                    (:id))]
-                  (println "4: " role-id)
                   @(discord-rest/add-guild-member-role! rest-con guild-id lezyes-id role-id
                                                        :audit-reason reason))))
-         (vec ))))
+         (vec))))
 
 (defmethod handle-event :ready
   [_ event-data]
@@ -53,35 +52,29 @@
 
 (defmethod handle-event :default [_ _])
 
-(defmethod handle-event :presence-update
-  [_ event-data]
-  (println event-data)
-  (let [user-id (->> event-data (:user) (:id))
-        event-guild-id (:guild-id event-data)
-        activities-names (->> event-data
-                              (:activities)
-                              (map :name)
-                              (map string/lower-case)
-                              (set)
-                              (#(set/difference % #{"custom status"})))
-        guild-roles-rules ((keyword event-guild-id) guild-roles)
-        user-current-roles (->> event-data (:roles) (set))
+(defn get-anything-roles [guild-roles-rules]
+  (filter (fn [[_ role-rules]]
+            (empty? (get role-rules "names")))
+          guild-roles-rules))
+
+(defn get-relavent-roles [guild-roles-rules activities-names]
+  (filter (fn [[role-id role-rules]]
+            (->> role-rules
+                 (#(get % "names"))
+                 (map string/lower-case)
+                 (set)
+                 (set/intersection activities-names)
+                 (seq)))
+          guild-roles-rules))
+
+(defn get-roles-to-update [user-current-roles event-guild-id activities-names]
+  (let [guild-roles-rules (get guild-roles event-guild-id)
         supervised-roles-ids (->> guild-roles-rules (keys) (map name) (set))
         user-curent-supervised-roles (set/intersection user-current-roles supervised-roles-ids)
         anything-roles-rules (if (seq activities-names)
-                               (filter (fn [[role-id role-rules]]
-                                         (empty? (:names role-rules)))
-                                       guild-roles-rules)
+                               (get-anything-roles guild-roles-rules)
                                #{})
-        relavent-roles-rules (filter (fn [[role-id role-rules]]
-                                       (->> role-rules
-                                            (:names)
-                                            (set)
-                                            (#(set/intersection
-                                               (string/lower-case %)
-                                               activities-names))
-                                            (seq)))
-                                     guild-roles-rules)
+        relavent-roles-rules (get-relavent-roles guild-roles-rules activities-names)
         new-roles-ids (->> (if (seq relavent-roles-rules)
                              relavent-roles-rules
                              anything-roles-rules)
@@ -90,15 +83,28 @@
                            (set))
         roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
         roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)
-        role-update (fn [f] (partial f (:rest @state) event-guild-id user-id))
-        add-fut (vec (map #((role-update discord-rest/add-guild-member-role!) %) roles-to-add))
-        rem-fut (vec (map #((role-update discord-rest/remove-guild-member-role!) %) roles-to-remove))]
-            ;; (map #((println "add-fut:" (pr-str @%))) add-fut)
-            ;; (map #((println "rem-fut:" (pr-str @%))) rem-fut)
-            ;; (println "add-fut:" (pr-str add-fut))
-            ;; (println "rem-fut:" (pr-str rem-fut))
-    (println "roles to add:" (pr-str roles-to-add))
-    (println "roles to remove:" (pr-str roles-to-remove))))
+        ]
+    (list roles-to-add roles-to-remove)))
+
+(defn update-user-roles [event-guild-id user-id roles-to-add roles-to-remove]
+  (let [role-update (fn [f] (partial f (:rest @state) event-guild-id user-id))]
+    (list (doall #((role-update discord-rest/add-guild-member-role!) %) roles-to-add)
+          (doall #((role-update discord-rest/remove-guild-member-role!) %) roles-to-remove))))
+
+(defmethod handle-event :presence-update
+  [_ event-data]
+  (let [user-id (get-in event-data [:user :id])
+        event-guild-id (:guild-id event-data)
+        ;; user-current-roles (:roles event-data)
+        user-current-roles (->> event-data (:roles) (set))
+        activities-names (->> event-data
+                              (:activities)
+                              (map :name)
+                              (map string/lower-case)
+                              (set)
+                              (#(set/difference % #{"custom status"})))
+        [roles-to-add roles-to-remove] (get-roles-to-update user-current-roles event-guild-id activities-names)]
+    (update-user-roles event-guild-id user-id roles-to-add roles-to-remove)))
 
 
 
