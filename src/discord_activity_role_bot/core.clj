@@ -12,11 +12,6 @@
 
 (def bot-id (atom nil))
 
-(def config (edn/read-string (slurp "config.edn")))
-(def token (->> "secret.edn" (slurp) (edn/read-string) (:token)))
-
-(def guild-roles (cheshire/parse-string (slurp "guild_games_roles_default.json") string/lower-case))
-
 (defmulti handle-event (fn [type _data] type))
 
 
@@ -47,7 +42,7 @@
 (defmethod handle-event :ready
   [_ event-data]
   (println "logged in to guilds: " (->> event-data (:guilds) (map :id)))
-  (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))
+  (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing (:config @state))))
   (easter event-data))
 
 (defmethod handle-event :default [_ _])
@@ -68,7 +63,7 @@
           guild-roles-rules))
 
 (defn get-roles-to-update [user-current-roles event-guild-id activities-names]
-  (let [guild-roles-rules (get guild-roles event-guild-id)
+  (let [guild-roles-rules (get (:guild-roles @state) event-guild-id)
         supervised-roles-ids (->> guild-roles-rules (keys) (map name) (set))
         user-curent-supervised-roles (set/intersection user-current-roles supervised-roles-ids)
         anything-roles-rules (if (seq activities-names)
@@ -84,6 +79,8 @@
         roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
         roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)
         ]
+    (println "roles-to-add: " roles-to-add)
+    (println "roles-to-remove: " roles-to-remove)
     (list roles-to-add roles-to-remove)))
 
 (defn update-user-roles [event-guild-id user-id roles-to-add roles-to-remove]
@@ -95,7 +92,6 @@
   [_ event-data]
   (let [user-id (get-in event-data [:user :id])
         event-guild-id (:guild-id event-data)
-        ;; user-current-roles (:roles event-data)
         user-current-roles (->> event-data (:roles) (set))
         activities-names (->> event-data
                               (:activities)
@@ -108,13 +104,19 @@
 
 
 
-(defn start-bot! [token intents]
-  (let [event-channel (async/chan 100)
+(defn start-bot! [] 
+  (let [token (->> "secret.edn" (slurp) (edn/read-string) (:token))
+        guild-roles (cheshire/parse-string (slurp "guild_games_roles_default.json") string/lower-case)
+        config (edn/read-string (slurp "config.edn"))
+        intents (:intents config)
+        event-channel (async/chan 100)
         gateway-connection (discord-ws/connect-bot! token event-channel :intents intents)
         rest-connection (discord-rest/start-connection! token)]
     {:events  event-channel
      :gateway gateway-connection
-     :rest    rest-connection}))
+     :rest    rest-connection
+     :config config
+     :guild-roles guild-roles}))
 
 (defn stop-bot! [{:keys [rest gateway events] :as _state}]
   (discord-rest/stop-connection! rest)
@@ -122,7 +124,7 @@
   (close! events))
 
 (defn -main [& args]
-  (reset! state (start-bot! token (:intents config)))
+  (reset! state (start-bot!))
   (reset! bot-id (:id @(discord-rest/get-current-user! (:rest @state))))
   (try
     (message-pump! (:events @state) handle-event)
