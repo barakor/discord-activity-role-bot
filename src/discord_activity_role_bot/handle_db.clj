@@ -8,7 +8,6 @@
 (def db-file-path "db.edn")
 
 (def db-comment "; {server-id {\n; 	role-id {\n; 		:names [\"a\" \"b\" \"c\"] \n; 		:comments [\"comment\"]}}}\n")
-(println db-comment)
 
 (defn save-db [db]
  (with-open [w (clojure.java.io/writer db-file-path)]
@@ -34,7 +33,6 @@
  (let [updated-db (transform [server-id rule-id :names] #(concat % (map string/lower-case names)) db)]
       updated-db)) 
 
-
 (defn remove-names-from-rule [db server-id rule-id names]
  (let [has-names? (fn [rule-names] 
                    (filter 
@@ -48,35 +46,3 @@
 (defn update-rule-names [db server-id rule-id new-names]
  (let [updated-db (update-in db [server-id rule-id :names] (fn [old-names] (map string/lower-case new-names)))]
       updated-db)) 
-
-
-
-(update-rule-names db
-          "609603874474426372" "1087888852280164372" ["qUAke", "New", "bazooka"])
-
-
-
-(remove-names-from-rule db
-          "609603874474426372" "1087888852280164372" ["quake"])
-
-(some #(= % "quake") ["quake" "diabotical"])
-
-
-
-(get-db)
-(def db (load-db))
-
-
-(def ndb (update-rule db
-          "609603874474426372" "1087888852280164372" {:names ["quake","diabotical"] :comments ["SUCK"]}))    
-
-ndb
-(save-db ndb)
-
-
-
-(identity db)
-
-(pr db)
-
-
