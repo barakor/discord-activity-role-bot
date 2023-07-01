@@ -5,9 +5,22 @@
             [com.rpl.specter :refer :all]))
 
 
+(def db-file-path "db.edn")
+
+(def db-comment "; {server-id {\n; 	role-id {\n; 		:names [\"a\" \"b\" \"c\"] \n; 		:comments [\"comment\"]}}}\n")
+(println db-comment)
+
+(defn save-db [db]
+ (with-open [w (clojure.java.io/writer db-file-path)]
+  (binding [*out* w
+            *print-length* false]
+    (println db-comment)
+    (pprint db))))
 
 
-(defn load-db [] (edn/read-string (slurp "db.edn")))
+(save-db ndb)
+
+(defn load-db [] (edn/read-string (slurp db-file-path)))
 
 (defn lower_names [db] 
   (transform [MAP-VALS MAP-VALS :names ALL] string/lower-case db))
@@ -17,10 +30,10 @@
   (lower_names)))
 
 (defn update-rule [db server-id rule-id new-rule]
- (->>db)
- ())
+ (let [updated-db (update-in db [server-id rule-id] (fn [old-rule] new-rule))]
+      updated-db)) 
 
-
+(ppr db)
 
 
 
@@ -28,10 +41,16 @@
 (def db (load-db))
 
 
-(update-in db
- ["609603874474426372" "1087888852280164372"]
- #(identity
-   {:names ["quake","diabotical"] :comments ["Test"]}))
- 
+(def ndb (update-rule db
+          "609603874474426372" "1087888852280164372" {:names ["quake","diabotical"] :comments ["SUCK"]}))    
 
- 
+ndb
+(save-db ndb)
+
+
+
+(identity db)
+
+(pr db)
+
+
