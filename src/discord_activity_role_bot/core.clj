@@ -77,8 +77,8 @@
                            (map name)
                            (set))
         roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
-        roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)
-        ]
+        roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)]
+        
     (println "roles-to-add: " roles-to-add)
     (println "roles-to-remove: " roles-to-remove)
     (list roles-to-add roles-to-remove)))

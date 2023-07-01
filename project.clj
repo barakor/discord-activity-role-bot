@@ -5,6 +5,7 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.suskalo/discljord "1.1.1"]
-                 [cheshire "5.11.0"]]
+                 [cheshire "5.11.0"]
+                 [com.rpl/specter "1.1.4"]]
   :repl-options {:init-ns discord-activity-role-bot.core}
   :main discord-activity-role-bot.core)
