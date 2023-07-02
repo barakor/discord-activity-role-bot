@@ -1,4 +1,4 @@
-(ns discord-activity-role-bot.core
+(ns discord-activity-role-bot.handle-db
   (:require [clojure.edn :as edn]  
             [clojure.set :as set]
             [clojure.string :as string]
