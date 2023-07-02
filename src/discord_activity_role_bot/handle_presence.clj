@@ -43,8 +43,8 @@
     (println "roles-to-remove: " roles-to-remove)
     (list roles-to-add roles-to-remove)))
 
-(defn update-user-roles [event-guild-id user-id roles-to-add roles-to-remove]
-  (let [role-update (fn [f] (partial f (:rest @state) event-guild-id user-id))]
+(defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
+  (let [role-update (fn [f] (partial f rest-connection event-guild-id user-id))]
     (list (doall #((role-update discord-rest/add-guild-member-role!) %) roles-to-add)
           (doall #((role-update discord-rest/remove-guild-member-role!) %) roles-to-remove))))
 
@@ -59,5 +59,5 @@
                                 (map string/lower-case)
                                 (set)
                                 (#(set/difference % #{"custom status"})))
-         [roles-to-add roles-to-remove] (get-roles-to-update user-current-roles event-guild-id activities-names)]
-     (update-user-roles event-guild-id user-id roles-to-add roles-to-remove)))
+         [roles-to-add roles-to-remove] (get-roles-to-update db user-current-roles event-guild-id activities-names)]
+     (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))

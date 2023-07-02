@@ -53,9 +53,9 @@
 
 (defmethod handle-event :presence-update
   [_ event-data]
-  (let [rest-connection (:rest @sate)
-        db @db]) 
-  (presence-update event-data rest-connection db))
+  (let [rest-connection (:rest @state)
+        db @db] 
+      (presence-update event-data rest-connection)))
 
 
 (defn start-bot! [] 
