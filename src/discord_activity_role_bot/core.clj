@@ -55,12 +55,11 @@
   [_ event-data]
   (let [rest-connection (:rest @state)
         db @db] 
-      (presence-update event-data rest-connection)))
+      (presence-update event-data rest-connection db)))
 
 
 (defn start-bot! [] 
   (let [token (->> "secret.edn" (slurp) (edn/read-string) (:token))
-        guild-roles (cheshire/parse-string (slurp "guild_games_roles_default.json") string/lower-case)
         config (edn/read-string (slurp "config.edn"))
         intents (:intents config)
         event-channel (async/chan 100)
@@ -69,8 +68,8 @@
     {:events  event-channel
      :gateway gateway-connection
      :rest    rest-connection
-     :config config
-     :guild-roles guild-roles}))
+     :config config}))
+
 
 (defn stop-bot! [{:keys [rest gateway events] :as _state}]
   (discord-rest/stop-connection! rest)

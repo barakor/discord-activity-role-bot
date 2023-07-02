@@ -38,15 +38,17 @@
                            (set))
         roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
         roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)]
-        
-    (println "roles-to-add: " roles-to-add)
-    (println "roles-to-remove: " roles-to-remove)
     (list roles-to-add roles-to-remove)))
 
 (defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
-  (let [role-update (fn [f] (partial f rest-connection event-guild-id user-id))]
-    (list (doall #((role-update discord-rest/add-guild-member-role!) %) roles-to-add)
-          (doall #((role-update discord-rest/remove-guild-member-role!) %) roles-to-remove))))
+    (println "event-guild-id: " event-guild-id)
+    (println "user-id: " user-id)
+    (println "roles-to-add: " roles-to-add)
+    (println "roles-to-remove: " roles-to-remove)
+    (list (doall (map #(discord-rest/add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))
+          (doall (map #(discord-rest/remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove))))
+           
+           
 
 
 (defn presence-update [event-data rest-connection db]
