@@ -3,12 +3,14 @@
             [discord-activity-role-bot.handle-presence :refer [presence-update]]
             [discord-activity-role-bot.handle-db :refer [get-db]]
             [clojure.core.async :as async :refer [close!]]
-            [discljord.messaging :as discord-rest]
+            [discljord.messaging :refer [get-guild-roles! create-guild-role! add-guild-member-role! create-message! 
+            																													start-connection! stop-connection! get-current-user!]]
             [discljord.connections :as discord-ws]
-            [discljord.events :refer [message-pump!]]
-            [clojure.set :as set]
-            [clojure.string :as string]
-            [cheshire.core :as cheshire]))
+            [discljord.events :refer [message-pump!]]))
+
+
+; create-global-application-command!
+; create-interaction-response!
 
 (def state (atom nil))
 
@@ -27,19 +29,19 @@
         role-color 15877376
         rest-con (:rest @state)] 
     (->> guild-ids 
-         (map #(hash-map % @(discord-rest/get-guild-roles! rest-con %))) 
+         (map #(hash-map % @(get-guild-roles! rest-con %))) 
          (apply merge) 
          (map (fn [[guild-id guild-roles]]
                 (let [role-id (->> guild-roles
                                    (filter #(= role-name (:name %)))
                                    (#(if (seq %)
                                        (first %)
-                                       (discord-rest/create-guild-role! rest-con guild-id
+                                       (create-guild-role! rest-con guild-id
                                                                         :name role-name
                                                                         :color role-color
                                                                         :audit-reason reason)))
                                    (:id))]
-                  @(discord-rest/add-guild-member-role! rest-con guild-id lezyes-id role-id
+                  @(add-guild-member-role! rest-con guild-id lezyes-id role-id
                                                        :audit-reason reason))))
          (vec))))
 
@@ -57,6 +59,15 @@
         db @db] 
       (presence-update event-data rest-connection db)))
 
+(defmethod handle-event :message-create
+  [event-type {{bot :bot} :author :keys [channel-id content]}]
+  (when-not bot
+    (create-message! (:rest @state) channel-id :content "Hello, World!")))
+
+(defmethod handle-event :message-update
+  [event-type {{bot :bot} :author :keys [channel-id content]}]
+  (when-not bot
+    (create-message! (:rest @state) channel-id :content "Hello, World!")))
 
 (defn start-bot! [] 
   (let [token (->> "secret.edn" (slurp) (edn/read-string) (:token))
@@ -64,7 +75,7 @@
         intents (:intents config)
         event-channel (async/chan 100)
         gateway-connection (discord-ws/connect-bot! token event-channel :intents intents)
-        rest-connection (discord-rest/start-connection! token)]
+        rest-connection (start-connection! token)]
     {:events  event-channel
      :gateway gateway-connection
      :rest    rest-connection
@@ -72,13 +83,13 @@
 
 
 (defn stop-bot! [{:keys [rest gateway events] :as _state}]
-  (discord-rest/stop-connection! rest)
+  (stop-connection! rest)
   (discord-ws/disconnect-bot! gateway)
   (close! events))
 
 (defn -main [& args]
   (reset! state (start-bot!))
-  (reset! bot-id (:id @(discord-rest/get-current-user! (:rest @state))))
+  (reset! bot-id (:id @(get-current-user! (:rest @state))))
   (reset! db (get-db))
   (try
     (message-pump! (:events @state) handle-event)

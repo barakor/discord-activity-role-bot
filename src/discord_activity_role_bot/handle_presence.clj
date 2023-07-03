@@ -1,7 +1,6 @@
 (ns discord-activity-role-bot.handle-presence
   (:require 
-            [clojure.core.async :as async :refer [close!]]
-            [discljord.messaging :as discord-rest]
+            [discljord.messaging :refer [add-guild-member-role remove-guild-member-roe!]]
             [clojure.set :as set]
             [clojure.string :as string]))
             
@@ -45,21 +44,21 @@
     (println "user-id: " user-id)
     (println "roles-to-add: " roles-to-add)
     (println "roles-to-remove: " roles-to-remove)
-    (list (doall (map #(discord-rest/add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))
-          (doall (map #(discord-rest/remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove))))
+    (list (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))
+          (doall (map #(remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove))))
            
            
 
 
 (defn presence-update [event-data rest-connection db]
  (let [user-id (get-in event-data [:user :id])
-         event-guild-id (:guild-id event-data)
-         user-current-roles (->> event-data (:roles) (set))
-         activities-names (->> event-data
-                                (:activities)
-                                (map :name)
-                                (map string/lower-case)
-                                (set)
-                                (#(set/difference % #{"custom status"})))
-         [roles-to-add roles-to-remove] (get-roles-to-update db user-current-roles event-guild-id activities-names)]
+       event-guild-id (:guild-id event-data)
+       user-current-roles (->> event-data (:roles) (set))
+       activities-names (->> event-data
+                              (:activities)
+                              (map :name)
+                              (map string/lower-case)
+                              (set)
+                              (#(set/difference % #{"custom status"})))
+       [roles-to-add roles-to-remove] (get-roles-to-update db user-current-roles event-guild-id activities-names)]
      (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))
