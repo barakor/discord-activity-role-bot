@@ -3,15 +3,24 @@
             [discord-activity-role-bot.handle-presence :refer [presence-update]]
             [discord-activity-role-bot.handle-db :refer [get-db]]
             [clojure.core.async :as async :refer [close!]]
-            [discljord.messaging :refer [get-guild-roles! create-guild-role! add-guild-member-role! create-message! 
-            																													start-connection! stop-connection! get-current-user!]]
+            [slash.command.structure :as scs]
+            [discljord.messaging :as discrod-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! create-message! 
+                                                                      start-connection! stop-connection! get-current-user! 
+                                                                      bulk-overwrite-global-application-commands!]]
             [discljord.connections :as discord-ws]
             [discljord.events :refer [message-pump!]]))
+
+            
+(def open-command {
+                   :name "test"
+                   :description "Testing new command"})
+  
+open-command
 
 
 ; create-global-application-command!
 ; create-interaction-response!
-
+; bulk-overwrite-guild-application-commands! (:rest @state) @bot-id guild-id [open-command])
 (def state (atom nil))
 
 (def db (atom nil))
@@ -19,7 +28,6 @@
 (def bot-id (atom nil))
 
 (defmulti handle-event (fn [type _data] type))
-
 
 (defn easter [event-data]
   (let [guild-ids (->> event-data (:guilds) (map :id))
@@ -91,6 +99,7 @@
   (reset! state (start-bot!))
   (reset! bot-id (:id @(get-current-user! (:rest @state))))
   (reset! db (get-db))
+  (bulk-overwrite-global-application-commands! (:rest @state) @bot-id [open-command])
   (try
     (message-pump! (:events @state) handle-event)
     (finally (stop-bot! @state))))

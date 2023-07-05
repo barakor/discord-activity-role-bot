@@ -1,6 +1,6 @@
 (ns discord-activity-role-bot.handle-presence
   (:require 
-            [discljord.messaging :refer [add-guild-member-role remove-guild-member-roe!]]
+            [discljord.messaging :refer [add-guild-member-role! remove-guild-member-role!]]
             [clojure.set :as set]
             [clojure.string :as string]))
             
