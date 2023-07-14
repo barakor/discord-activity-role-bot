@@ -3,7 +3,6 @@
             [discord-activity-role-bot.handle-presence :refer [presence-update]]
             [discord-activity-role-bot.handle-db :refer [get-db]]
             [clojure.core.async :as async :refer [close!]]
-            [slash.command.structure :as scs]
             [discljord.messaging :as discrod-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! create-message! 
                                                                       start-connection! stop-connection! get-current-user! 
                                                                       bulk-overwrite-global-application-commands!]]
@@ -15,12 +14,9 @@
                    :name "test"
                    :description "Testing new command"})
   
-open-command
 
 
 ; create-global-application-command!
-; create-interaction-response!
-; bulk-overwrite-guild-application-commands! (:rest @state) @bot-id guild-id [open-command])
 (def state (atom nil))
 
 (def db (atom nil))
@@ -76,6 +72,16 @@ open-command
   [event-type {{bot :bot} :author :keys [channel-id content]}]
   (when-not bot
     (create-message! (:rest @state) channel-id :content "Hello, World!")))
+
+
+(defmethod handle-event :interaction-create
+  [_ event-data]
+  (let [{:keys [type data]} (sc/route-interaction interaction-handlers event-data)]
+    (discord-rest/create-interaction-response! (:rest @state) (:id event-data) (:token event-data) type :data data)))
+
+
+
+
 
 (defn start-bot! [] 
   (let [token (->> "secret.edn" (slurp) (edn/read-string) (:token))
