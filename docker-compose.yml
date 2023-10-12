@@ -1,0 +1,16 @@
+version: "0.1"
+services:
+  rolebot-clj:
+    build: ./
+    networks:
+      - rolebot-net
+    ports:
+      - "443"
+      - "80"
+    # volumes:
+    #   - .:/code
+    restart: unless-stopped
+
+networks:
+  # The presence of these objects is sufficient to define them
+  rolebot-net: {}
