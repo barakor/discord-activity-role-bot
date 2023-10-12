@@ -3,13 +3,13 @@
             [discljord.messaging :refer [add-guild-member-role! remove-guild-member-role!]]
             [clojure.set :as set]
             [clojure.string :as string]))
-            
 
 
 (defn get-anything-roles [guild-roles-rules]
   (filter (fn [[_ role-rules]]
             (empty? (get role-rules "names")))
           guild-roles-rules))
+
 
 (defn get-relavent-roles [guild-roles-rules activities-names]
   (filter (fn [[role-id role-rules]]
@@ -20,6 +20,7 @@
                  (set/intersection activities-names)
                  (seq)))
           guild-roles-rules))
+
 
 (defn get-roles-to-update [db user-current-roles event-guild-id activities-names]
   (let [guild-roles-rules (get db event-guild-id)
@@ -37,7 +38,9 @@
                            (set))
         roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
         roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)]
+
     (list roles-to-add roles-to-remove)))
+
 
 (defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
     (println "event-guild-id: " event-guild-id)
@@ -47,8 +50,6 @@
     (list (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))
           (doall (map #(remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove))))
            
-           
-
 
 (defn presence-update [event-data rest-connection db]
  (let [user-id (get-in event-data [:user :id])
@@ -61,4 +62,5 @@
                               (set)
                               (#(set/difference % #{"custom status"})))
        [roles-to-add roles-to-remove] (get-roles-to-update db user-current-roles event-guild-id activities-names)]
+       
      (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))

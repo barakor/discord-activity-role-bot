@@ -23,7 +23,6 @@
 
 (def bot-id (atom nil))
 
-(defmulti handle-event (fn [type _data] type))
 
 (defn easter [event-data]
   (let [guild-ids (->> event-data (:guilds) (map :id))
@@ -49,13 +48,18 @@
                                                        :audit-reason reason))))
          (vec))))
 
+
+(defmulti handle-event (fn [type _data] type))
+
+(defmethod handle-event :default [_ _])
+
+
 (defmethod handle-event :ready
   [_ event-data]
   (println "logged in to guilds: " (->> event-data (:guilds) (map :id)))
   (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing (:config @state))))
   (easter event-data))
 
-(defmethod handle-event :default [_ _])
 
 (defmethod handle-event :presence-update
   [_ event-data]
@@ -78,9 +82,6 @@
 ;   [_ event-data]
 ;   (let [{:keys [type data]} (sc/route-interaction interaction-handlers event-data)]
 ;     (discord-rest/create-interaction-response! (:rest @state) (:id event-data) (:token event-data) type :data data)))
-
-
-
 
 
 (defn start-bot! [] 
