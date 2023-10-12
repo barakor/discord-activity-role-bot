@@ -63,15 +63,15 @@
         db @db] 
       (presence-update event-data rest-connection db)))
 
-(defmethod handle-event :message-create
-  [event-type {{bot :bot} :author :keys [channel-id content]}]
-  (when-not bot
-    (create-message! (:rest @state) channel-id :content "Hello, World!")))
+; (defmethod handle-event :message-create
+;   [event-type {{bot :bot} :author :keys [channel-id content]}]
+;   (when-not bot
+;     (create-message! (:rest @state) channel-id :content "Hello, World!")))
 
-(defmethod handle-event :message-update
-  [event-type {{bot :bot} :author :keys [channel-id content]}]
-  (when-not bot
-    (create-message! (:rest @state) channel-id :content "Hello, World!")))
+; (defmethod handle-event :message-update
+;   [event-type {{bot :bot} :author :keys [channel-id content]}]
+;   (when-not bot
+;     (create-message! (:rest @state) channel-id :content "Hello, World!")))
 
 
 ; (defmethod handle-event :interaction-create
@@ -105,7 +105,7 @@
   (reset! state (start-bot!))
   (reset! bot-id (:id @(get-current-user! (:rest @state))))
   (reset! db (get-db))
-  (bulk-overwrite-global-application-commands! (:rest @state) @bot-id [open-command])
+  ; (bulk-overwrite-global-application-commands! (:rest @state) @bot-id [open-command])
   (try
     (message-pump! (:events @state) handle-event)
     (finally (stop-bot! @state))))
