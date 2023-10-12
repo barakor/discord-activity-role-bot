@@ -74,10 +74,10 @@
     (create-message! (:rest @state) channel-id :content "Hello, World!")))
 
 
-(defmethod handle-event :interaction-create
-  [_ event-data]
-  (let [{:keys [type data]} (sc/route-interaction interaction-handlers event-data)]
-    (discord-rest/create-interaction-response! (:rest @state) (:id event-data) (:token event-data) type :data data)))
+; (defmethod handle-event :interaction-create
+;   [_ event-data]
+;   (let [{:keys [type data]} (sc/route-interaction interaction-handlers event-data)]
+;     (discord-rest/create-interaction-response! (:rest @state) (:id event-data) (:token event-data) type :data data)))
 
 
 
