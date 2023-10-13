@@ -1,9 +1,6 @@
 (ns discord-activity-role-bot.handle-db
   (:require [clojure.edn :as edn]
-            [clojure.pprint :refer [pprint]]  
-            [clojure.set :as set]
-            [clojure.string :as string]
-            [com.rpl.specter :refer :all]))
+            [clojure.pprint :refer [pprint]]))  
 
 
 (def db (atom nil))
@@ -19,6 +16,7 @@
             *print-length* false]
     (println db-comment)
     (pprint db))))
+
 
 (defn read-db! [db-file-path] (edn/read-string (slurp db-file-path)))
 
