@@ -1,48 +1,72 @@
-; {server-id {
-; 	role-id {
-; 		:names ["a" "b" "c"] 
-; 		:comments ["comment"]}}}
+; {
+;   server-id {
+;     :server-name "server name"
+;     :roles-rules {
+;       role-id {
+;         :type :named-activity/:else
+;         :activity-names ["a" "b" "c"] 
+;         :role-name "role name"
+;         :comment "comment"
+;       }
+;     }
+;   }
+;  }
+; 
 
-{
-	"1104894380080365710" 
-	{"1125053038474825908" 
-		{:names ["akane"]}},
-	"609603874474426372"
- {"1087888852280164372"
-  {:names ["quake" "diabotical"], :comments ["SUCK"]}},
+{"1104894380080365710"
+ {:roles-rules
+  {"1125053038474825908"
+   {:activity-names ["akane"], :type :named-activity}}},
+ "609603874474426372"
+ {:roles-rules
+  {"1087888852280164372"
+   {:comments ["SUCK"],
+    :activity-names ["quake" "diabotical"],
+    :type :named-activity}}},
  "140856338564513792"
- {"955512982912249927" {:names ["quake" "diabotical"]}},
+ {:roles-rules
+  {"955512982912249927"
+   {:activity-names ["quake" "diabotical"], :type :named-activity}}},
  "1013632559458046003"
- {"1077327783459553340" {:names ["quake" "diabotical"]}},
+ {:roles-rules
+  {"1077327783459553340"
+   {:activity-names ["quake" "diabotical"], :type :named-activity}}},
  "199524231963344896"
- {"953740617584898138" {:names ["quake"]},
-  "953740335551492186" {:names ["akane" "Alone"]},
-  "953991784818679878" {:comments ["anything else"]}},
+ {:roles-rules
+  {"953740617584898138"
+   {:activity-names ["quake"], :type :named-activity},
+   "953740335551492186"
+   {:activity-names ["akane" "alone"], :type :named-activity},
+   "953991784818679878"
+   {:comments ["anything else"], :activity-names [], :type :else}}},
  "496471206653067274"
- {"770345730531262475"
-  {:names
-   ["guilty gear"
-    "devil daggers"
-    "tekken"
-    "street fighter"
-    "dnf duel"
-    "skullgirls"
-    "samurai"
-    "granblue"
-    "rivals of aether"
-    "vs."
-    "versus"
-    "blazblue"
-    "kombat"
-    "combat"
-    "calibur"
-    "melty"
-    "under night"
-    "brawlhalla"
-    "uniel"
-    "arcana"
-    "fight"
-    "killer instinct"
-    "for honor"
-    "Toribash"]},
-  "869046494882304040" {:comments ["Anything else"]}}}
+ {:roles-rules
+  {"770345730531262475"
+   {:activity-names
+    ["guilty gear"
+     "devil daggers"
+     "tekken"
+     "street fighter"
+     "dnf duel"
+     "skullgirls"
+     "samurai"
+     "granblue"
+     "rivals of aether"
+     "vs."
+     "versus"
+     "blazblue"
+     "kombat"
+     "combat"
+     "calibur"
+     "melty"
+     "under night"
+     "brawlhalla"
+     "uniel"
+     "arcana"
+     "fight"
+     "killer instinct"
+     "for honor"
+     "toribash"],
+    :type :named-activity},
+   "869046494882304040"
+   {:comments ["Anything else"], :activity-names [], :type :else}}}}

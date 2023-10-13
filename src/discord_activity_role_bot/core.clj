@@ -9,7 +9,7 @@
             [discljord.connections :as discord-ws]
             [discljord.events :refer [message-pump!]]))
 
-            
+
 (def open-command {
                    :name "test"
                    :description "Testing new command"})

@@ -62,5 +62,6 @@
                               (set)
                               (#(set/difference % #{"custom status"})))
        [roles-to-add roles-to-remove] (get-roles-to-update db user-current-roles event-guild-id activities-names)]
-       
+
      (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))
+

@@ -1,49 +1,28 @@
 (ns discord-activity-role-bot.handle-db
   (:require [clojure.edn :as edn]
-            [clojure.pprint :as pprint]  
+            [clojure.pprint :refer [pprint]]  
             [clojure.set :as set]
             [clojure.string :as string]
             [com.rpl.specter :refer :all]))
 
 
+(def db (atom nil))
+
 (def db-file-path "db.edn")
 
-(def db-comment "; {server-id {\n; 	role-id {\n; 		:names [\"a\" \"b\" \"c\"] \n; 		:comments [\"comment\"]}}}\n")
+(def db-comment "; {\n;   server-id {\n;     :server-name \"server name\"\n;     :roles-rules {\n;       role-id {\n;         :type :named-activity/:else\n;         :activity-names [\"a\" \"b\" \"c\"] \n;         :role-name \"role name\"\n;         :comment \"comment\"\n;       }\n;     }\n;   }\n;  }\n; \n")
 
-(defn save-db [db]
+
+(defn save-db! [db db-file-path]
  (with-open [w (clojure.java.io/writer db-file-path)]
   (binding [*out* w
             *print-length* false]
     (println db-comment)
-    (pr db))))
+    (pprint db))))
 
-(defn load-db [] (edn/read-string (slurp db-file-path)))
+(defn read-db! [db-file-path] (edn/read-string (slurp db-file-path)))
 
-(defn lower_names [db] 
-  (transform [MAP-VALS MAP-VALS :names ALL] string/lower-case db))
 
-(defn get-db [] 
- (->> (load-db)
-  (lower_names)))
+(defn load-db! []
+ (reset! db (read-db! db-file-path)))
 
-(defn update-rule [db server-id rule-id new-rule]
- (let [updated-db (update-in db [server-id rule-id] (fn [old-rule] new-rule))]
-      updated-db)) 
-
-(defn add-names-to-rule [db server-id rule-id names]
- (let [updated-db (transform [server-id rule-id :names] #(concat % (map string/lower-case names)) db)]
-      updated-db)) 
-
-(defn remove-names-from-rule [db server-id rule-id names]
- (let [has-names? (fn [rule-names] 
-                   (filter 
-                    (fn [rule-name] 
-                     (some #(not= % rule-name) 
-                      names)) 
-                    rule-names))
-       updated-db (transform [server-id rule-id :names] has-names?  db)]
-      updated-db)) 
-
-(defn update-rule-names [db server-id rule-id new-names]
- (let [updated-db (update-in db [server-id rule-id :names] (fn [old-names] (map string/lower-case new-names)))]
-      updated-db)) 
