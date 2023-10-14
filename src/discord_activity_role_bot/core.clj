@@ -84,14 +84,3 @@
     (finally (stop-bot! @state))))
 
 
-
-(reset! state (start-bot!))
-
-; ; (:events @state)
-
-; (message-pump! (:events @state) handle-event)
-(def x (discrod-rest/get-guild-member! (:rest @state) "199524231963344896" "88533822521507840"))
-(permissions/user-roles)
-(pprint @x)
-
-(set (:roles @x))

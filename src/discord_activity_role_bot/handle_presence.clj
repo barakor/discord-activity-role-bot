@@ -1,6 +1,6 @@
 (ns discord-activity-role-bot.handle-presence
   (:require 
-            [clojure.set :as set]
+            [clojure.set :as set :refer [intersection difference]]
             [clojure.string :as string]
 
             [discord-activity-role-bot.handle-db :refer [db]]
@@ -9,32 +9,16 @@
             [com.rpl.specter :as s]))
 
 
-(defn get-relavent-roles [guild-roles-rules activities-names]
-  (filter (fn [[role-id role-rules]]
-            (->> role-rules
-                 (#(get % "names"))
-                 (map string/lower-case)
-                 (set)
-                 (set/intersection activities-names)
-                 (seq)))
-          guild-roles-rules))
-
-
-(defn get-roles-to-update [guild-roles-rules user-current-roles event-guild-id activities-names]
+(defn get-roles-to-update [guild-roles-rules user-current-roles activities-names]
   (let [supervised-roles-ids (set (keys guild-roles-rules))
-        user-curent-supervised-roles (set/intersection user-current-roles supervised-roles-ids)
+        user-curent-supervised-roles (intersection user-current-roles supervised-roles-ids)
         
+        anything-roles-rules (s/select [s/ALL #(= :else (:type (second %))) s/ALL] guild-roles-rules)
+        relavent-roles-rules (s/select [s/ALL #(not-empty (intersection activities-names (:activity-names (second %)))) s/ALL] guild-roles-rules)
 
-        anything-roles-rules (if (seq activities-names)
-                               (get-anything-roles guild-roles-rules)
-                               #{})
-
-        relavent-roles-rules (get-relavent-roles guild-roles-rules activities-names)
-        
-
-        new-roles-ids (->> (if (seq relavent-roles-rules)
-                             relavent-roles-rules
-                             anything-roles-rules)
+        new-roles-ids (->> (if (empty? relavent-roles-rules)
+                             anything-roles-rules
+                             relavent-roles-rules)
                            (keys)
                            (map name)
                            (set))
@@ -58,12 +42,25 @@
  (let [user-id (get-in event-data [:user :id])
        event-guild-id (:guild-id event-data)
        guild-roles-rules (get-in @db [event-guild-id :roles-rules])
-       user-current-roles (->> (get-guild-member! rest-connection event-guild-id user-id) (:roles) (set))
+       user-current-roles (set (:roles (get-guild-member! rest-connection event-guild-id user-id)))
        activities-names (->> event-data 
                           (s/select [:activities s/ALL :name #(not= % "Custom Status")])
                           (map string/lower-case)
                           (set))
-       [roles-to-add roles-to-remove] (get-roles-to-update guild-roles-rules user-current-roles event-guild-id activities-names)]
+       supervised-roles-ids (set (keys guild-roles-rules))
+       user-curent-supervised-roles (intersection user-current-roles supervised-roles-ids)
+       
+       anything-roles-rules (s/select [s/ALL #(= :else (:type (second %))) s/ALL] guild-roles-rules)
+       relavent-roles-rules (s/select [s/ALL #(not-empty (intersection activities-names (:activity-names (second %)))) s/ALL] guild-roles-rules)
+
+       new-roles-ids (->> (if (empty? relavent-roles-rules)
+                            anything-roles-rules
+                            relavent-roles-rules)
+                          (keys)
+                          (map name)
+                          (set))
+       roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
+       roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)]
 
      (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))
 
