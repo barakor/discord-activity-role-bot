@@ -16,7 +16,9 @@
 {"1104894380080365710"
  {:roles-rules
   {"1125053038474825908"
-   {:activity-names #{"akane"}, :type :named-activity}}},
+   {:activity-names #{"akane" "mountain"}, :type :named-activity}
+   "1104894661350408274"
+   {:comments ["anything else"], :activity-names #{}, :type :else}}},
  "609603874474426372"
  {:roles-rules
   {"1087888852280164372"
