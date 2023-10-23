@@ -1,4 +1,8 @@
-FROM clojure:temurin-17-lein-alpine
+FROM alpine:3
+
+RUN apk add clojure bash
+RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein -O /usr/local/bin/lein
+RUN chmod a+x /usr/local/bin/lein
 
 COPY ./ /app
 WORKDIR /app
