@@ -1,14 +1,13 @@
 (ns discord-activity-role-bot.core
   (:require [clojure.edn :as edn]
             [discord-activity-role-bot.handle-presence :refer [presence-update]]
-            [discord-activity-role-bot.handle-db :refer [load-db! db]]
+            [discord-activity-role-bot.handle-db :refer [load-db!]]
             [clojure.core.async :as async :refer [close!]]
             
-            [discljord.messaging :as discrod-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! create-message! 
+            [discljord.messaging :as discrod-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! 
                                                           start-connection! stop-connection! get-current-user!]]                                                          
             [discljord.connections :as discord-ws]
             [discljord.events :refer [message-pump!]]
-            [discljord.permissions :as permissions]
 
             [com.rpl.specter :as s]))
 

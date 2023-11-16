@@ -6,7 +6,7 @@
             [discord-activity-role-bot.handle-db :refer [db]]
 
             [discljord.messaging :refer [get-guild-member! add-guild-member-role! remove-guild-member-role!]]
-            [com.rpl.specter :as s]))
+            [com.rpl.specter :as s :refer [ALL]]))
             
 
 (defn get-roles-to-update [guild-roles-rules user-current-roles activities-names]
@@ -22,8 +22,8 @@
                            (keys)
                            (map name)
                            (set))
-        roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
-        roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)]
+        roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
+        roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
 
     (list roles-to-add roles-to-remove)))
 
@@ -55,13 +55,13 @@
        relavent-roles-ids (s/select [s/ALL #(not-empty (intersection activities-names (:activity-names (second %)))) s/FIRST] guild-roles-rules)
 
        new-roles-ids (if (not-empty activities-names)
-                       (set (if (and (empty? relavent-roles-ids))
+                       (set (if (empty? relavent-roles-ids)
                               anything-roles-ids
                               relavent-roles-ids))
                        #{})
                           
-       roles-to-remove (set/difference user-curent-supervised-roles new-roles-ids)
-       roles-to-add (set/difference new-roles-ids user-curent-supervised-roles)]
+       roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
+       roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
  
      (println event-data)
      (println (str "user-current-roles: " user-current-roles))

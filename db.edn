@@ -16,59 +16,86 @@
 {"1104894380080365710"
  {:roles-rules
   {"1125053038474825908"
-   {:activity-names #{"akane" "mountain"}, :type :named-activity}
+   {:activity-names #{"akane" "mountain"},
+    :type :named-activity,
+    :name "Named"},
    "1104894661350408274"
-   {:comments ["anything else"], :activity-names #{}, :type :else}}},
+   {:comments ["anything else"],
+    :activity-names #{},
+    :type :else,
+    :name "purple"}},
+  :name "Bots boots & boobs"},
  "609603874474426372"
  {:roles-rules
   {"1087888852280164372"
    {:comments ["SUCK"],
-    :activity-names #{"quake" "diabotical"},
-    :type :named-activity}}},
+    :activity-names #{"diabotical" "quake"},
+    :type :named-activity,
+    :name "Currently Quaking"}},
+  :name "Church of Quake"},
  "140856338564513792"
  {:roles-rules
   {"955512982912249927"
-   {:activity-names #{"quake" "diabotical"}, :type :named-activity}}},
+   {:activity-names #{"diabotical" "quake"},
+    :type :named-activity,
+    :name "Currently Quaking"}},
+  :name "Not so Elite MF"},
  "1013632559458046003"
  {:roles-rules
   {"1077327783459553340"
-   {:activity-names #{"quake" "diabotical"}, :type :named-activity}}},
+   {:activity-names #{"diabotical" "quake"},
+    :type :named-activity,
+    :name "Currently Quaking"}},
+  :name "QC Tournaments"},
  "199524231963344896"
  {:roles-rules
   {"953740617584898138"
-   {:activity-names #{"quake"}, :type :named-activity},
+   {:activity-names #{"quake"},
+    :type :named-activity,
+    :name "Currently Quaking"},
    "953740335551492186"
-   {:activity-names #{"akane" "alone"}, :type :named-activity},
+   {:activity-names #{"alone" "akane"},
+    :type :named-activity,
+    :name "Fighting"},
    "953991784818679878"
-   {:comments ["anything else"], :activity-names #{}, :type :else}}},
+   {:comments ["anything else"],
+    :activity-names #{},
+    :type :else,
+    :name "Playing"}},
+  :name "The Gang"},
  "496471206653067274"
  {:roles-rules
   {"770345730531262475"
    {:activity-names
-    #{"guilty gear"
-      "devil daggers"
-      "tekken"
-      "street fighter"
-      "dnf duel"
+    #{"blazblue"
       "skullgirls"
-      "samurai"
-      "granblue"
-      "rivals of aether"
+      "arcana"
+      "guilty gear"
+      "for honor"
       "vs."
-      "versus"
-      "blazblue"
-      "kombat"
-      "combat"
+      "dnf duel"
+      "toribash"
       "calibur"
-      "melty"
-      "under night"
       "brawlhalla"
       "uniel"
-      "arcana"
-      "fight"
+      "street fighter"
+      "devil daggers"
+      "tekken"
+      "under night"
+      "granblue"
       "killer instinct"
-      "for honor"
-      "toribash"},
-    :type :named-activity},
+      "kombat"
+      "melty"
+      "versus"
+      "combat"
+      "samurai"
+      "rivals of aether"
+      "fight"},
+    :type :named-activity,
+    :name "Currently Fighting"},
    "869046494882304040"
-   {:comments ["Anything else"], :activity-names #{}, :type :else}}}}
+   {:comments ["Anything else"],
+    :activity-names #{},
+    :type :else,
+    :name "Filthy Casuals"}},
+  :name "FighterHubIL"}}
