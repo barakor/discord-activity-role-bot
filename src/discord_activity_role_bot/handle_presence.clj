@@ -9,23 +9,11 @@
             [com.rpl.specter :as s :refer [ALL]]))
             
 
-(defn get-roles-to-update [guild-roles-rules user-current-roles activities-names]
-  (let [supervised-roles-ids (set (keys guild-roles-rules))
-        user-curent-supervised-roles (intersection user-current-roles supervised-roles-ids)
-        
-        anything-roles-rules (s/select [s/ALL #(= :else (:type (second %))) s/ALL] guild-roles-rules)
-        relavent-roles-rules (s/select [s/ALL #(not-empty (intersection activities-names (:activity-names (second %)))) s/ALL] guild-roles-rules)
-
-        new-roles-ids (->> (if (empty? relavent-roles-rules)
-                             anything-roles-rules
-                             relavent-roles-rules)
-                           (keys)
-                           (map name)
-                           (set))
-        roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
-        roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
-
-    (list roles-to-add roles-to-remove)))
+(defn contains-subset [values-set subs-set]
+  (->> subs-set
+    (map (fn [subs] (remove nil? (map #(re-find (re-pattern subs) %) values-set)))) 
+    (remove empty?)
+    (apply concat)))
 
 
 (defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
@@ -51,14 +39,21 @@
        supervised-roles-ids (set (keys guild-roles-rules))
        user-curent-supervised-roles (intersection user-current-roles supervised-roles-ids)
        
-       anything-roles-ids (s/select [s/ALL #(= :else (:type (second %))) s/FIRST] guild-roles-rules)
-       relavent-roles-ids (s/select [s/ALL #(not-empty (intersection activities-names (:activity-names (second %)))) s/FIRST] guild-roles-rules)
-
-       new-roles-ids (if (not-empty activities-names)
-                       (set (if (empty? relavent-roles-ids)
-                              anything-roles-ids
-                              relavent-roles-ids))
-                       #{})
+       anything-roles-rules (->> guild-roles-rules
+                              (s/select [s/ALL 
+                                         #(= :else (:type (second %)))]) 
+                              (map #(hash-map (first %) (second %)))
+                              (apply merge))
+       relavent-roles-rules (->> guild-roles-rules
+                              (s/select [s/ALL 
+                                         #(not-empty (contains-subset activities-names (:activity-names (second %))))])   
+                              (map #(hash-map (first %) (second %)))
+                              (apply merge))
+       new-roles-ids (->> (if (empty? relavent-roles-rules)
+                            anything-roles-rules
+                            relavent-roles-rules)
+                          (keys)
+                          (map name))
                           
        roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
        roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
