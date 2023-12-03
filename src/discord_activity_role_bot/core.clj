@@ -5,6 +5,7 @@
             [clojure.core.async :as async :refer [close!]]
             
             [discljord.messaging :as discrod-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! 
+                                                          bulk-overwrite-guild-application-commands!
                                                           start-connection! stop-connection! get-current-user!]]                                                          
             [discljord.connections :as discord-ws]
             [discljord.events :refer [message-pump!]]
@@ -20,9 +21,8 @@
 
 (def bot-id (atom nil))
 
-(defn easter [event-data]
-  (let [guild-ids (s/select [:guilds s/ALL :id] event-data)
-        lezyes-id "88533822521507840"
+(defn easter [guild-ids]
+  (let [lezyes-id "88533822521507840"
         role-name "Lazy Null"
         reason "Heil the king of nothing and master of null"
         role-color 15877376
@@ -47,9 +47,10 @@
 
 (defmethod handle-event :ready
   [_ event-data]
-  (println "logged in to guilds: " (s/select [:guilds s/ALL :id] event-data))
-  (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))
-  (easter event-data))
+  (let [guild-ids (s/select [:guilds s/ALL :id] event-data)]
+    (println "logged in to guilds: " guild-ids)
+    (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))    
+    (easter guild-ids)))
 
 
 (defmethod handle-event :presence-update
