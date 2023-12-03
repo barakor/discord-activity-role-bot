@@ -17,11 +17,11 @@
 
 
 (defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
-    (println "event-guild-id: " event-guild-id)
-    (println "user-id: " user-id)
-    (println "roles-to-add: " roles-to-add)
-    (println "roles-to-remove: " roles-to-remove)
-    (println "")
+    ; (println "event-guild-id: " event-guild-id)
+    ; (println "user-id: " user-id)
+    ; (println "roles-to-add: " roles-to-add)
+    ; (println "roles-to-remove: " roles-to-remove)
+    ; (println "")
     (list (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))
           (doall (map #(remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove))))
            
@@ -60,10 +60,10 @@
        roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
        roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
  
-     (println event-data)
-     (println (str "user-current-roles: " user-current-roles))
-     (println (str "supervised-roles-ids: " supervised-roles-ids))
-     (println (str "user-curent-supervised-roles: " user-curent-supervised-roles))
-     (println (str "activities-names: " activities-names))
+     ; (println event-data)
+     ; (println (str "user-current-roles: " user-current-roles))
+     ; (println (str "supervised-roles-ids: " supervised-roles-ids))
+     ; (println (str "user-curent-supervised-roles: " user-curent-supervised-roles))
+     ; (println (str "activities-names: " activities-names))
      (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))
 
