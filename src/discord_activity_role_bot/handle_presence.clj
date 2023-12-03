@@ -49,11 +49,13 @@
                                          #(not-empty (contains-subset activities-names (:activity-names (second %))))])   
                               (map #(hash-map (first %) (second %)))
                               (apply merge))
+       
        new-roles-ids (->> (if (empty? relavent-roles-rules)
                             anything-roles-rules
                             relavent-roles-rules)
                           (keys)
-                          (map name))
+                          (map name)
+                          (set))
                           
        roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
        roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
