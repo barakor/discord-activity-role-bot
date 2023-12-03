@@ -2,15 +2,19 @@ version: "0.1"
 services:
   rolebot-clj:
     build: ./
+    hostname: rolebot-clj
+    container_name: rolebot-clj
     networks:
       - rolebot-net
     ports:
       - "443"
       - "80"
-    # volumes:
-    #   - .:/code
+    volumes:
+    - depscache:/root/.m2
     restart: unless-stopped
 
 networks:
   # The presence of these objects is sufficient to define them
   rolebot-net: {}
+volumes:
+  depscache: {}
