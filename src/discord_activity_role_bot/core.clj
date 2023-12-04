@@ -61,7 +61,7 @@
 
 (defn start-bot! [] 
   (let [intents (:intents config)
-        event-channel (async/chan 100000)
+        event-channel (async/chan (async/sliding-buffer 100000))
         gateway-connection (discord-ws/connect-bot! token event-channel :intents intents)
         rest-connection (start-connection! token)]
     {:events  event-channel
