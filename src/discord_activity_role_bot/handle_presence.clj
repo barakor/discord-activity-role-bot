@@ -17,11 +17,6 @@
 
 
 (defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
-    ; (println "event-guild-id: " event-guild-id)
-    ; (println "user-id: " user-id)
-    ; (println "roles-to-add: " roles-to-add)
-    ; (println "roles-to-remove: " roles-to-remove)
-    ; (println "")
     (do (doall (map #(@(remove-guild-member-role! rest-connection event-guild-id user-id %)) roles-to-remove))
         (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))))
            
@@ -50,5 +45,16 @@
                        (not-empty relavent-roles-rules) (set relavent-roles-rules)
                        :else (set anything-roles-rules))]
 
+     (println "event-guild-id: " event-guild-id 
+              "\n"
+              "user-id: " user-id
+              "\n"
+              "activities-names: " activities-names
+              "\n"
+              "supervised-roles-ids(removing all): " supervised-roles-ids
+              "\n"
+              "roles-to-add: " new-roles-ids 
+              "\n")
+     
      (update-user-roles rest-connection event-guild-id user-id new-roles-ids supervised-roles-ids)))
 
