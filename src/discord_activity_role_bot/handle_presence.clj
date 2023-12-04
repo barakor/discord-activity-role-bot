@@ -22,48 +22,33 @@
     ; (println "roles-to-add: " roles-to-add)
     ; (println "roles-to-remove: " roles-to-remove)
     ; (println "")
-    (list (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))
-          (doall (map #(remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove))))
+    (do (map #(remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove)
+        (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add)))
            
 
 (defn presence-update [event-data rest-connection]
  (let [user-id (get-in event-data [:user :id])
        event-guild-id (:guild-id event-data)
        guild-roles-rules (get-in @db [event-guild-id :roles-rules])
-       user-current-roles (set (:roles @(get-guild-member! rest-connection event-guild-id user-id)))
        activities-names (->> event-data 
                           (s/select [:activities s/ALL :name #(not= % "Custom Status")])
                           (map string/lower-case)
                           (set))
 
        supervised-roles-ids (set (keys guild-roles-rules))
-       user-curent-supervised-roles (intersection user-current-roles supervised-roles-ids)
        
        anything-roles-rules (->> guild-roles-rules
-                              (s/select [s/ALL 
-                                         #(= :else (:type (second %)))]) 
-                              (map #(hash-map (first %) (second %)))
-                              (apply merge))
+                              (s/select [s/ALL #(= :else (:type (second %)))]) 
+                              (map first))
+
        relavent-roles-rules (->> guild-roles-rules
-                              (s/select [s/ALL 
-                                         #(not-empty (contains-subset activities-names (:activity-names (second %))))])   
-                              (map #(hash-map (first %) (second %)))
-                              (apply merge))
-       
-       new-roles-ids (->> (if (empty? relavent-roles-rules)
-                            anything-roles-rules
-                            relavent-roles-rules)
-                          (keys)
-                          (map name)
-                          (set))
-                          
-       roles-to-remove (difference user-curent-supervised-roles new-roles-ids)
-       roles-to-add (difference new-roles-ids user-curent-supervised-roles)]
- 
-     ; (println event-data)
-     ; (println (str "user-current-roles: " user-current-roles))
-     ; (println (str "supervised-roles-ids: " supervised-roles-ids))
-     ; (println (str "user-curent-supervised-roles: " user-curent-supervised-roles))
-     ; (println (str "activities-names: " activities-names))
-     (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove)))
+                              (s/select [s/ALL #(not-empty (contains-subset activities-names (:activity-names (second %))))])   
+                              (map first))
+
+       new-roles-ids (cond 
+                       (empty? activities-names) #{}
+                       (not-empty relavent-roles-rules) (set relavent-roles-rules)
+                       :else (set anything-roles-rules))]
+
+     (update-user-roles rest-connection event-guild-id user-id new-roles-ids supervised-roles-ids)))
 
