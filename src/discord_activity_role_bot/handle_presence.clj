@@ -22,8 +22,8 @@
     ; (println "roles-to-add: " roles-to-add)
     ; (println "roles-to-remove: " roles-to-remove)
     ; (println "")
-    (do (map #(remove-guild-member-role! rest-connection event-guild-id user-id %) roles-to-remove)
-        (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add)))
+    (do (doall (map #(@(remove-guild-member-role! rest-connection event-guild-id user-id %)) roles-to-remove))
+        (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))))
            
 
 (defn presence-update [event-data rest-connection]
