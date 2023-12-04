@@ -56,12 +56,12 @@
 (defmethod handle-event :presence-update
   [_ event-data]
   (let [rest-connection (:rest @state)] 
-    (presence-update event-data rest-connection)))
+    (doall (presence-update event-data rest-connection))))
 
 
 (defn start-bot! [] 
   (let [intents (:intents config)
-        event-channel (async/chan 100)
+        event-channel (async/chan 100000)
         gateway-connection (discord-ws/connect-bot! token event-channel :intents intents)
         rest-connection (start-connection! token)]
     {:events  event-channel
