@@ -28,7 +28,7 @@
  "609603874474426372"
  {:roles-rules
   {"1087888852280164372"
-   {:comments ["SUCK"],
+   {:comments ["QUACK"],
     :activity-names #{"diabotical" "quake"},
     :type :named-activity,
     :name "Currently Quaking"}},

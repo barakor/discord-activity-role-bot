@@ -4,7 +4,7 @@
             [discord-activity-role-bot.handle-db :refer [load-db!]]
             [clojure.core.async :as async :refer [close!]]
             
-            [discljord.messaging :as discrod-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! 
+            [discljord.messaging :as discord-rest :refer [get-guild-roles! create-guild-role! add-guild-member-role! 
                                                           bulk-overwrite-guild-application-commands!
                                                           start-connection! stop-connection! get-current-user!]]                                                          
             [discljord.connections :as discord-ws]
