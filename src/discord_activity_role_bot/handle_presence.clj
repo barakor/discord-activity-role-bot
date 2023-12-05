@@ -49,7 +49,7 @@
            roles-to-remove (set/difference user-current-supervised-roles new-roles-ids)]
 
 
-       (when (and (not-empty roles-to-add) (not-empty roles-to-remove))
+       (when (or (not-empty roles-to-add) (not-empty roles-to-remove))
          (println "event-guild-id: " event-guild-id 
                 "\n"
                 "user-id: " user-id
