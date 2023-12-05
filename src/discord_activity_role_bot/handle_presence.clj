@@ -18,8 +18,10 @@
 
 
 (defn update-user-roles [rest-connection event-guild-id user-id roles-to-add roles-to-remove]
-    (do (doall (map #(deref (remove-guild-member-role! rest-connection event-guild-id user-id %)) roles-to-remove))
-        (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))))
+    (when (not-empty roles-to-remove)
+      (doall (map #(deref (remove-guild-member-role! rest-connection event-guild-id user-id %)) roles-to-remove)))
+    (when (not-empty roles-to-add)
+      (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))))
            
 
 (defn presence-update [event-data rest-connection]
