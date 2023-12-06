@@ -6,6 +6,7 @@
             [discljord.messaging :as discord-rest :refer [get-guild-member! add-guild-member-role! remove-guild-member-role!]]
 
             [discord-activity-role-bot.handle-db :refer [db]]
+            [discord-activity-role-bot.state :refer [blacklist]]
 
             [com.rpl.specter :as s :refer [ALL]]))
             
@@ -36,7 +37,8 @@
            activities-names (->> event-data 
                               (s/select [:activities s/ALL :name #(not= % "Custom Status")])
                               (map string/lower-case)
-                              (set))
+                              (set)
+                              (#(set/difference % blacklist)))
            anything-roles-rules (->> guild-roles-rules
                                   (s/select [s/ALL #(= :else (:type (second %)))]) 
                                   (map first))
