@@ -81,6 +81,7 @@
   (load-db!)
   (try
     (message-pump! (:events @state) handle-event)
-    (catch Exception e (println "Exception at -main level, maybe I can handle it here? " e) )
+    (catch Exception e (println "Exception at -main level, maybe I can handle it here? " e))
     (finally (stop-bot! @state))))
+
 
