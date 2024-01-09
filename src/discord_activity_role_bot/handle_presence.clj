@@ -8,7 +8,9 @@
             [discord-activity-role-bot.handle-db :refer [db]]
             [discord-activity-role-bot.state :refer [blacklist]]
 
-            [com.rpl.specter :as s :refer [ALL]]))
+            [com.rpl.specter :as s :refer [ALL]]
+            
+            [taoensso.timbre :as timbre :refer [log]]))
             
 
 (defn contains-subset [values-set subs-set]
@@ -54,7 +56,8 @@
 
 
        (when (or (not-empty roles-to-add) (not-empty roles-to-remove))
-         (println "event-guild-id: " event-guild-id 
+         (log :info 
+           (str "event-guild-id: " event-guild-id 
                 "\n"
                 "user-id: " user-id
                 "\n"
@@ -63,7 +66,7 @@
                 "roles-to-remove: " roles-to-remove
                 "\n"
                 "roles-to-add: " roles-to-add 
-                "\n")
+                "\n"))
          (update-user-roles rest-connection event-guild-id user-id roles-to-add roles-to-remove))))))
 
 

@@ -10,8 +10,12 @@
             [discljord.connections :as discord-ws]
             [discljord.events :refer [message-pump!]]
 
-            [com.rpl.specter :as s]))
-
+            [com.rpl.specter :as s]
+            
+            [taoensso.timbre :as timbre :refer [log]]
+            [taoensso.timbre.tools.logging :refer [use-timbre]]))
+     
+(use-timbre)
 
 (def config (edn/read-string (slurp "config.edn")))
 
@@ -48,7 +52,7 @@
 (defmethod handle-event :ready
   [_ event-data]
   (let [guild-ids (s/select [:guilds s/ALL :id] event-data)]
-    (println "logged in to guilds: " guild-ids)
+    (log :info (str "logged in to guilds: " guild-ids))
     (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))    
     (easter guild-ids)))
 
@@ -81,7 +85,7 @@
   (load-db!)
   (try
     (message-pump! (:events @state) handle-event)
-    (catch Exception e (println "Exception at -main level, maybe I can handle it here? " e))
+    (catch Exception e (log :error (str "Exception at -main level, maybe I can handle it here? " e)))
     (finally (stop-bot! @state))))
 
 
