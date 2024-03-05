@@ -47,13 +47,14 @@
 
 (defmulti handle-event (fn [type _data] type))
 
-(defmethod handle-event :default [_ _])
+(defmethod handle-event :default [event-type event-data]
+  (log :report (str "event type: " event-type "\nevent-data: " event-data)))
 
 (defmethod handle-event :ready
   [_ event-data]
   (let [guild-ids (s/select [:guilds s/ALL :id] event-data)]
     (log :info (str "logged in to guilds: " guild-ids))
-    (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))    
+    (discord-ws/status-update! (:gateway @state) :activity (discord-ws/create-activity :name (:playing config)))
     (easter guild-ids)))
 
 
