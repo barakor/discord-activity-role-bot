@@ -34,7 +34,7 @@
        supervised-roles-ids (set (keys guild-roles-rules))]
 
    (when (not-empty supervised-roles-ids)
-     (let [user-current-roles (set (:roles @(discord-rest/get-guild-member! rest-connection event-guild-id user-id)))
+     (let [user-current-roles (set (:roles @(discord-rest/get-guild-member! rest-connection event-guild-id user-id))) ;; use a cache????
            user-current-supervised-roles (set/intersection supervised-roles-ids user-current-roles)
            activities-names (->> event-data 
                               (s/select [:activities s/ALL :name #(not= % "Custom Status")])
