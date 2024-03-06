@@ -2,11 +2,4 @@
  :playing "Setting Roles"
  :intents #{:guilds 
             :guild-members 
-            :guild-presences 
-            :guild-messages 
-            :guild-voice-states 
-            :guild-scheduled-events
-            :guild-emojis
-            :direct-messages}} 
-            
- 
+            :guild-presences}}

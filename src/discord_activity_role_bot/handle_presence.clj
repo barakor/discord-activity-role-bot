@@ -25,16 +25,21 @@
       (doall (map #(deref (remove-guild-member-role! rest-connection event-guild-id user-id %)) roles-to-remove)))
     (when (not-empty roles-to-add)
       (doall (map #(add-guild-member-role! rest-connection event-guild-id user-id %) roles-to-add))))
-           
 
-(defn presence-update [event-data rest-connection]
+
+(defn get-guild-user-roles [discord-state* rest-connection event-guild-id user-id]
+  (or (s/select-any [:discljord.events.state/guilds event-guild-id :members user-id :roles] @discord-state*)
+      (:roles @(discord-rest/get-guild-member! rest-connection event-guild-id user-id))))
+
+
+(defn presence-update [event-data rest-connection discord-state*]
  (let [user-id (get-in event-data [:user :id])
        event-guild-id (:guild-id event-data)
        guild-roles-rules (get-in @db [event-guild-id :roles-rules])
        supervised-roles-ids (set (keys guild-roles-rules))]
 
    (when (not-empty supervised-roles-ids)
-     (let [user-current-roles (set (:roles @(discord-rest/get-guild-member! rest-connection event-guild-id user-id))) ;; use a cache????
+     (let [user-current-roles (set (get-guild-user-roles discord-state* rest-connection event-guild-id user-id)) 
            user-current-supervised-roles (set/intersection supervised-roles-ids user-current-roles)
            activities-names (->> event-data 
                               (s/select [:activities s/ALL :name #(not= % "Custom Status")])

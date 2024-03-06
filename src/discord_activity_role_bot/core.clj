@@ -26,13 +26,16 @@
 
 (defmulti handle-event (fn [type _data] type))
 
-(defmethod handle-event :default [event-type event-data]
-  (log :report (str "event type: " event-type "\nevent-data: " event-data)))
+
+(defmethod handle-event :default [event-type event-data])
+  ; (log :report (str "event type: " event-type "\nevent-data: " event-data)))
+
 
 (defmethod handle-event :ready
   [_ event-data]
   (let [guild-ids (s/select [:guilds s/ALL :id] event-data)]
     (log :info (str "logged in to guilds: " guild-ids))
+    (log :info (str "discord-state cache " (when-not @discord-state* "not ") "available"))
     (discord-ws/status-update! (:gateway @state*) :activity (discord-ws/create-activity :name (:playing config)))
     (easter guild-ids)))
 
@@ -40,12 +43,12 @@
 (defmethod handle-event :presence-update
   [_ event-data]
   (let [rest-connection (:rest @state*)] 
-    (presence-update event-data rest-connection)))
+    (presence-update event-data rest-connection discord-state*)))
 
 
 (defn start-bot! [token & {:keys [intents]}]
   (let [caching (caching-transducer discord-state* discord-state/caching-handlers)
-        event-channel (async/chan (async/sliding-buffer 100000))
+        event-channel (async/chan (async/sliding-buffer 100000) caching)
         gateway-connection (discord-ws/connect-bot! token event-channel :intents intents)
         rest-connection (start-connection! token)]
     {:events  event-channel
@@ -68,8 +71,9 @@
     (catch Exception e (log :error (str "Exception at -main level, maybe I can handle it here? " e)))
     (finally (stop-bot! @state*))))
 
+
 (comment
-  (-main)
+  (-main))
+  
 
 
-  @discord-state*)
