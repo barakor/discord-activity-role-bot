@@ -14,12 +14,13 @@ use crate::event_handler::{Bot, SHUTDOWN};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = get_config()?;
-    let token = config.discord_token;
-    // Initialize the tracing subscriber.
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
+
+    let config = get_config()?;
+    let token = config.discord_token;
+    // Initialize the tracing subscriber.
 
     let intents = Intents::GUILD_PRESENCES | Intents::GUILDS;
     let client = Client::new(token.clone());
@@ -31,7 +32,7 @@ async fn main() -> Result<()> {
     let mut tasks = Vec::with_capacity(shards.len());
 
     tracing::debug!("Spawned Shards: {}", &shards.len());
-    let bot = Arc::new(Bot::new());
+    let bot = Arc::new(Bot::new(Arc::new(client)));
 
     for shard in shards {
         senders.push(shard.sender());

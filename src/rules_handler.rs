@@ -4,8 +4,7 @@ use std::{
     io::BufReader,
 };
 
-use serde::{Deserialize, de::IntoDeserializer};
-use twilight_model::guild;
+use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RoleType {
@@ -25,15 +24,16 @@ impl RoleType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Rule {
-    guild_id: u64,
-    guild_name: String,
-    role_id: u64,
-    role_name: String,
-    role_type: RoleType,
-    activities: BTreeSet<String>,
-    comments: String,
+    pub guild_id: u64,
+    pub guild_name: String,
+    pub role_id: u64,
+    pub role_name: String,
+    pub role_type: RoleType,
+    pub activities: BTreeSet<String>,
+    pub comments: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GuildRules {
     default_rules: BTreeSet<Rule>,
     activities_rules: BTreeSet<Rule>,

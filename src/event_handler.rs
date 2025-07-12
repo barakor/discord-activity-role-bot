@@ -1,34 +1,35 @@
-use anyhow::Result;
 use governor::DefaultDirectRateLimiter;
-use governor::{Quota, RateLimiter, clock::DefaultClock, state::InMemoryState};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use governor::Quota;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::num::NonZeroU32;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::io::Join;
-use tokio::{signal, sync::Mutex, task::JoinHandle, time::sleep};
+use std::time::Duration;
+
+use tokio::{sync::Mutex, task::JoinHandle, time::sleep};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{CloseFrame, Config, Event, EventTypeFlags, Intents, Shard, StreamExt as _};
+use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
 use twilight_http::Client;
 use twilight_model::gateway::payload::incoming::PresenceUpdate;
-use twilight_model::gateway::presence::Activity;
+use twilight_model::gateway::presence::ActivityType;
 use twilight_model::id::{
     Id,
     marker::{GuildMarker, RoleMarker, UserMarker},
 };
 
-use crate::rules_handler::{GuildRules, Rule, load_rules};
+use crate::rules_handler::{GuildRules, load_rules};
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+const DEBOUNCE_DELAY: Duration = Duration::from_secs(60);
 
 pub struct DebounceTask {
     pub handle: JoinHandle<()>,
 }
 
 pub struct Bot {
+    pub http_client: Arc<Client>,
     pub rules: BTreeMap<u64, GuildRules>,
     pub cache: Arc<InMemoryCache>,
     pub debounce_tasks: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), DebounceTask>>>,
@@ -37,7 +38,7 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub fn new() -> Self {
+    pub fn new(http_client: Arc<Client>) -> Self {
         let cache = Arc::new(
             InMemoryCache::builder()
                 .resource_types(ResourceType::all())
@@ -51,6 +52,7 @@ impl Bot {
         let rules = load_rules();
 
         Self {
+            http_client,
             rules,
             cache,
             debounce_tasks,
@@ -80,7 +82,7 @@ impl Bot {
     /// locks the queue when handling it because it mutates the queue
     pub async fn presence_update_loop_handler(&self) {
         loop {
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
             let mut map = self.presence_queue.lock().await;
 
             for ((guild_id, user_id), presence_update) in map.drain() {
@@ -106,29 +108,61 @@ impl Bot {
         // Schedule new debounce task
         let cache = self.cache.clone();
         let limiter = self.rate_limiter.clone();
+        let roles_rules = self.rules.clone();
+        let http_client = self.http_client.clone();
         let task_handle = tokio::spawn(async move {
             sleep(DEBOUNCE_DELAY).await;
 
-            let activities = &presence.activities;
-            let in_game = activities.iter().any(|a| a.name == GAME_NAME);
+            let activities: BTreeSet<String> = presence
+                .activities
+                .iter()
+                .filter(|activity| activity.kind == ActivityType::Playing)
+                .map(|activity| activity.name.to_string())
+                .collect();
+
+            let guild_rules = match roles_rules.get(&guild_id.get()) {
+                Some(guild_rules) => guild_rules,
+                None => return,
+            };
+            let rules_to_assign = guild_rules.matching_rules(activities);
+            if rules_to_assign.is_empty() {
+                return;
+            }
+            let roles_ids_to_assign: BTreeSet<u64> =
+                rules_to_assign.iter().map(|rule| rule.role_id).collect();
 
             if let Some(member) = cache.member(guild_id, user_id) {
                 // let has_role = member.roles.contains(&ROLE_ID);
-                let has_role = member.roles().contains(&ROLE_ID);
+                // let has_role = member.roles().contains(&ROLE_ID);
+                let user_roles: BTreeSet<u64> =
+                    member.roles().iter().map(|role_id| role_id.get()).collect();
 
-                if in_game && !has_role {
+                let roles_to_add = roles_ids_to_assign.difference(&user_roles).cloned();
+                let roles_to_remove = user_roles.difference(&roles_ids_to_assign).cloned();
+
+                // for rid in roles_ids_to_assign {
+                //     if !user_roles.contains(rid) {}
+                // }
+
+                for rid in roles_to_add {
+                    let role_id: Id<RoleMarker> = Id::new(rid);
+
                     limiter.until_ready().await;
-                    println!("Would add role {:?} to user {:?}", ROLE_ID, user_id);
-                    // Actual API call here
-                } else if !in_game && has_role {
+                    let _ = http_client
+                        .add_guild_member_role(guild_id, user_id, role_id)
+                        .await;
+                }
+
+                for rid in roles_to_remove {
+                    let role_id: Id<RoleMarker> = Id::new(rid);
+
                     limiter.until_ready().await;
-                    println!("Would remove role {:?} from user {:?}", ROLE_ID, user_id);
-                    // Actual API call here
-                } else {
-                    println!("No role change needed for user {:?}", user_id);
+                    let _ = http_client
+                        .remove_guild_member_role(guild_id, user_id, role_id)
+                        .await;
                 }
             } else {
-                println!("Member not found in cache for user {:?}", user_id);
+                tracing::error!("Member not found in cache for user {user_id:?}");
             }
         });
 
@@ -166,16 +200,12 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Vec<JoinHandle<()>> {
     vec![presence_handler_task]
 }
 
-// Configuration
-const ROLE_ID: Id<RoleMarker> = Id::new(123456789012345678); // Your target role ID
-const GAME_NAME: &str = "My Cool Game";
-const DEBOUNCE_DELAY: Duration = Duration::from_secs(60);
-
-// Represents a scheduled debounce task
-
 mod tests {
+
     #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
+    use std::time::SystemTime;
 
     #[test]
     fn test_hashmap() {
