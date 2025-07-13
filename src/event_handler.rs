@@ -26,6 +26,7 @@ use twilight_model::id::{
     marker::{GuildMarker, UserMarker},
 };
 
+use crate::events::easter;
 use crate::events::update_roles_by_activity;
 use crate::rules_handler::{GuildRules, load_rules};
 
@@ -84,6 +85,7 @@ impl Bot {
                 GuildCreate::Available(guild_data) => {
                     let guild_id = guild_data.id;
                     self.guild_role_purge(guild_id).await?;
+                    self.lazy_null(guild_id).await?;
                 }
                 GuildCreate::Unavailable(_) => (),
             },
@@ -210,6 +212,16 @@ impl Bot {
             queue.insert((guild_id, user_id), PresenceUpdate(presence));
         }
         Ok({})
+    }
+
+    pub async fn lazy_null(&self, guild_id: Id<GuildMarker>) -> Result<()> {
+        easter(
+            self.http_client.clone(),
+            self.rate_limiter.clone(),
+            self.cache.clone(),
+            guild_id,
+        )
+        .await
     }
 }
 
