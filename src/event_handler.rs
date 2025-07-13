@@ -1,7 +1,9 @@
 use anyhow::Result;
+use anyhow::bail;
 use governor::DefaultDirectRateLimiter;
 use governor::Quota;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::mem;
 use std::num::NonZeroU32;
 use std::sync::{
     Arc,
@@ -12,13 +14,19 @@ use tokio::{sync::Mutex, task::JoinHandle};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
 use twilight_http::Client;
+use twilight_http::request::application::interaction;
+use twilight_model::application::interaction::Interaction;
+use twilight_model::application::interaction::InteractionData;
+use twilight_model::application::interaction::application_command::CommandData;
 use twilight_model::gateway::payload::incoming::GuildCreate;
 use twilight_model::gateway::payload::incoming::PresenceUpdate;
 use twilight_model::gateway::payload::outgoing::UpdatePresence;
+use twilight_model::gateway::payload::outgoing::update_presence::UpdatePresencePayload;
 use twilight_model::gateway::presence;
 use twilight_model::gateway::presence::Activity;
 use twilight_model::gateway::presence::ActivityType;
 use twilight_model::gateway::presence::ClientStatus;
+use twilight_model::gateway::presence::MinimalActivity;
 use twilight_model::gateway::presence::Presence;
 use twilight_model::gateway::presence::Status;
 use twilight_model::id::{
@@ -28,6 +36,8 @@ use twilight_model::id::{
 
 use crate::events::easter;
 use crate::events::update_roles_by_activity;
+use crate::interactions::command::GuildRulesList;
+use crate::interactions::command::XkcdCommand;
 use crate::rules_handler::{GuildRules, load_rules};
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
@@ -89,9 +99,35 @@ impl Bot {
                 }
                 GuildCreate::Unavailable(_) => (),
             },
+            Event::InteractionCreate(interaction) => {
+                let mut interaction = interaction.0;
+                let data = match mem::take(&mut interaction.data) {
+                    Some(InteractionData::ApplicationCommand(data)) => *data,
+                    _ => {
+                        tracing::warn!("ignoring non-command interaction");
+                        return Err(anyhow::format_err!("asdasd"));
+                    }
+                };
+                self.handle_command(interaction, data).await;
+            }
             _ => (),
         };
         Ok({})
+    }
+
+    /// Handle a command interaction.
+    pub async fn handle_command(
+        &self,
+        interaction: Interaction,
+        data: CommandData,
+    ) -> anyhow::Result<()> {
+        match &*data.name {
+            "xkcd" => XkcdCommand::handle(interaction, data, &self.http_client).await,
+            "list-guild-rules" => {
+                GuildRulesList::handle(interaction, data, &self.http_client, &self.rules).await
+            }
+            name => bail!("unknown command: {}", name),
+        }
     }
 
     /// runs as a separate thread to handle the presence queue
@@ -246,9 +282,6 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()
 
         match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
-            Ok(Event::Ready(_)) => {
-                set_shard_activity(&shard, "Rolling Roles".to_string());
-            }
             Ok(event) => bot.process_event(event).await?,
             Err(source) => {
                 tracing::error!(?source, "error receiving event");
@@ -258,31 +291,6 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()
     }
 
     Ok(vec![presence_handler_task])
-}
-
-pub fn set_shard_activity(shard: &Shard, activity: String) {
-    let activity = Activity {
-        name: activity,
-        kind: ActivityType::Playing,
-        url: None,
-        created_at: None,
-        timestamps: None,
-        application_id: None,
-        details: None,
-        state: None,
-        emoji: None,
-        party: None,
-        assets: None,
-        secrets: None,
-        instance: None,
-        flags: None,
-        buttons: vec![],
-        id: None,
-    };
-
-    let presence = UpdatePresence::new(vec![activity], false, None, Status::Online).unwrap();
-
-    shard.command(&presence);
 }
 
 #[allow(unused_imports)]
