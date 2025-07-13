@@ -1,3 +1,4 @@
+use anyhow::Result;
 use governor::DefaultDirectRateLimiter;
 use governor::Quota;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -7,25 +8,29 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
-use twilight_model::gateway::payload::outgoing::UpdatePresence;
-use twilight_model::gateway::presence::Activity;
-use twilight_model::gateway::presence::Status;
-
-use tokio::{sync::Mutex, task::JoinHandle, time::sleep};
+use tokio::{sync::Mutex, task::JoinHandle};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
 use twilight_http::Client;
+use twilight_model::gateway::payload::incoming::GuildCreate;
 use twilight_model::gateway::payload::incoming::PresenceUpdate;
+use twilight_model::gateway::payload::outgoing::UpdatePresence;
+use twilight_model::gateway::presence;
+use twilight_model::gateway::presence::Activity;
 use twilight_model::gateway::presence::ActivityType;
+use twilight_model::gateway::presence::ClientStatus;
+use twilight_model::gateway::presence::Presence;
+use twilight_model::gateway::presence::Status;
 use twilight_model::id::{
     Id,
-    marker::{GuildMarker, RoleMarker, UserMarker},
+    marker::{GuildMarker, UserMarker},
 };
 
+use crate::events::update_roles_by_activity;
 use crate::rules_handler::{GuildRules, load_rules};
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
-const DEBOUNCE_DELAY: Duration = Duration::from_secs(1);
+pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(1);
 
 pub struct DebounceTask {
     pub handle: JoinHandle<()>,
@@ -65,7 +70,7 @@ impl Bot {
     }
 
     /// Function to eat up an event and decide how to handle it, runs as part of the main thread, should not block  
-    pub async fn process_event(&self, event: Event) {
+    pub async fn process_event(&self, event: Event) -> Result<()> {
         match event {
             Event::PresenceUpdate(presence_update) => {
                 // self.handle_presence_update(*presence_update).await;
@@ -75,8 +80,16 @@ impl Bot {
                 let user_id = presence_update.user.id();
                 queue.insert((guild_id, user_id), *presence_update);
             }
+            Event::GuildCreate(guild_create) => match *guild_create {
+                GuildCreate::Available(guild_data) => {
+                    let guild_id = guild_data.id;
+                    self.guild_role_purge(guild_id).await?;
+                }
+                GuildCreate::Unavailable(_) => (),
+            },
             _ => (),
-        }
+        };
+        Ok({})
     }
 
     /// runs as a separate thread to handle the presence queue
@@ -116,72 +129,23 @@ impl Bot {
         let limiter = self.rate_limiter.clone();
         let roles_rules = self.rules.clone();
         let http_client = self.http_client.clone();
-        let task_handle = tokio::spawn(async move {
-            sleep(DEBOUNCE_DELAY).await;
 
-            let activities: BTreeSet<String> = presence
-                .activities
-                .iter()
-                .filter(|activity| activity.kind == ActivityType::Playing)
-                .map(|activity| activity.name.to_string())
-                .collect();
+        let user_activities: BTreeSet<String> = presence
+            .activities
+            .iter()
+            .filter(|activity| activity.kind == ActivityType::Playing)
+            .map(|activity| activity.name.to_string())
+            .collect();
 
-            let guild_rules = match roles_rules.get(&guild_id.get()) {
-                Some(guild_rules) => guild_rules,
-                None => return,
-            };
-            let managed_roles: BTreeSet<u64> =
-                guild_rules.all_rules().iter().map(|r| r.role_id).collect();
-
-            let rules_to_assign = guild_rules.matching_rules(activities);
-
-            let roles_ids_to_assign: BTreeSet<u64> =
-                rules_to_assign.iter().map(|rule| rule.role_id).collect();
-
-            if let Some(member) = cache.member(guild_id, user_id) {
-                let user_roles: BTreeSet<u64> = member
-                    .roles()
-                    .iter()
-                    .map(|role_id| role_id.get())
-                    .filter(|r| managed_roles.contains(r))
-                    .collect();
-
-                let roles_to_add = roles_ids_to_assign.difference(&user_roles).cloned();
-                let roles_to_remove = user_roles.difference(&roles_ids_to_assign).cloned();
-
-                for rid in roles_to_add {
-                    let role_id: Id<RoleMarker> = Id::new(rid);
-
-                    tracing::warn!("Assigning Role {role_id:?} to {user_id:?} in {guild_id:?}");
-                    limiter.until_ready().await;
-                    let r = http_client
-                        .add_guild_member_role(guild_id, user_id, role_id)
-                        .await;
-
-                    match r {
-                        Err(e) => tracing::error!(?e, "Couldn't add role"),
-                        Ok(_) => (),
-                    };
-                }
-
-                for rid in roles_to_remove {
-                    let role_id: Id<RoleMarker> = Id::new(rid);
-
-                    tracing::warn!("Removing Role {role_id:?} to {user_id:?} in {guild_id:?}");
-                    limiter.until_ready().await;
-                    let r = http_client
-                        .remove_guild_member_role(guild_id, user_id, role_id)
-                        .await;
-
-                    match r {
-                        Err(e) => tracing::error!(?e, "Couldn't remove role"),
-                        Ok(_) => (),
-                    };
-                }
-            } else {
-                tracing::error!("Member not found in cache for user {user_id:?}");
-            }
-        });
+        let task_handle = tokio::spawn(update_roles_by_activity(
+            http_client,
+            limiter,
+            cache,
+            roles_rules,
+            guild_id,
+            user_id,
+            user_activities,
+        ));
 
         tasks.insert(
             key,
@@ -190,10 +154,66 @@ impl Bot {
             },
         );
     }
+
+    pub async fn get_all_guild_members(
+        &self,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<Vec<Id<UserMarker>>> {
+        let mut after: Option<Id<UserMarker>> = None;
+        let mut user_ids = Vec::new();
+
+        loop {
+            let members_result = self
+                .http_client
+                .guild_members(guild_id)
+                .limit(1000)
+                .after(after.unwrap_or(Id::new(1)))
+                .await?;
+
+            let members = members_result.model().await?;
+
+            if members.is_empty() {
+                break;
+            }
+
+            user_ids.extend(members.iter().map(|m| m.user.id));
+
+            after = Some(members.last().unwrap().user.id);
+        }
+
+        Ok(user_ids)
+    }
+
+    pub async fn guild_role_purge(&self, guild_id: Id<GuildMarker>) -> Result<()> {
+        let guild_members = self.get_all_guild_members(guild_id).await?;
+        let mut queue = self.presence_queue.lock().await;
+        for user_id in guild_members {
+            let (status, activities) = match self.cache.presence(guild_id, user_id) {
+                Some(presence) => (
+                    presence.status(),
+                    presence.activities().iter().map(|x| x.clone()).collect(),
+                ),
+                None => (Status::Offline, vec![]),
+            };
+            let presence = Presence {
+                activities,
+                client_status: ClientStatus {
+                    desktop: None,
+                    mobile: None,
+                    web: None,
+                },
+                guild_id,
+                status,
+                user: presence::UserOrId::UserId { id: user_id },
+            };
+            queue.insert((guild_id, user_id), PresenceUpdate(presence));
+        }
+        Ok({})
+    }
 }
 
 /// entry point for the shard to run, the "main" function
-pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Vec<JoinHandle<()>> {
+pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()>>> {
     // Processing task
     let presence_handler_bot = bot.clone();
     let presence_handler_task =
@@ -208,23 +228,22 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Vec<JoinHandle<()>> {
             }
             _ => (),
         };
+        tracing::info!(?item, shard = ?shard.id(), "Received Event");
 
-        let event = match item {
+        match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
             Ok(Event::Ready(_)) => {
                 set_shard_activity(&shard, "Rolling Dice".to_string());
             }
-            Ok(event) => bot.process_event(event).await,
+            Ok(event) => bot.process_event(event).await?,
             Err(source) => {
                 tracing::error!(?source, "error receiving event");
                 continue;
             }
         };
-
-        tracing::debug!(?event, shard = ?shard.id(), "received event");
     }
 
-    vec![presence_handler_task]
+    Ok(vec![presence_handler_task])
 }
 
 pub fn set_shard_activity(shard: &Shard, activity: String) {
@@ -252,12 +271,12 @@ pub fn set_shard_activity(shard: &Shard, activity: String) {
     shard.command(&presence);
 }
 
+#[allow(unused_imports)]
+#[cfg(test)]
 mod tests {
-
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use std::time::SystemTime;
+    use tokio::time::sleep;
 
     #[test]
     fn test_hashmap() {

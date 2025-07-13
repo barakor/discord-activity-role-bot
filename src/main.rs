@@ -1,5 +1,6 @@
 mod config_handler;
 mod event_handler;
+mod events;
 mod rules_handler;
 
 use anyhow::Result;
@@ -119,4 +120,6 @@ mod tests {
     }
 }
 
-// TODO: Add cleanup slash command, in case of a reboot should check all users with the managed roles and verify they should have the role
+// TODO: Add cleanup slash command,
+// TODO: in case of a reboot should check all users with the managed roles and verify their roles
+// add lazy_null easter egg
