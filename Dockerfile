@@ -7,9 +7,17 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-
-COPY ./ /app
 WORKDIR /app
+
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+
+# 3. Build dependencies only
+RUN cargo build --release
+RUN rm -rf src
+
+# Now copy the actual source code
+COPY . .
 
 
 EXPOSE 443
