@@ -38,11 +38,13 @@ pub async fn update_roles_by_activity(
 
     if let Some(member) = cache.member(guild_id, user_id) {
         let user_roles: BTreeSet<u64> = member
+            .clone()
             .roles()
             .iter()
             .map(|role_id| role_id.get())
             .filter(|r| managed_roles.contains(r))
             .collect();
+        drop(member);
 
         let roles_to_add = roles_ids_to_assign.difference(&user_roles).cloned();
         let roles_to_remove = user_roles.difference(&roles_ids_to_assign).cloned();

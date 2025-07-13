@@ -190,11 +190,12 @@ impl Bot {
         for user_id in guild_members {
             let (status, activities) = match self.cache.presence(guild_id, user_id) {
                 Some(presence) => (
-                    presence.status(),
+                    presence.status().clone(),
                     presence.activities().iter().map(|x| x.clone()).collect(),
                 ),
                 None => (Status::Offline, vec![]),
             };
+
             let presence = Presence {
                 activities,
                 client_status: ClientStatus {
@@ -222,13 +223,14 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()
     // Event loop
 
     while let Some(item) = shard.next_event(EventTypeFlags::all()).await {
+        tracing::info!(?item, shard = ?shard.id(), "Received Event");
+
         match &item {
             Ok(event) => {
                 bot.cache.update(event);
             }
             _ => (),
         };
-        tracing::info!(?item, shard = ?shard.id(), "Received Event");
 
         match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
