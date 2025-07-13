@@ -35,8 +35,8 @@ pub struct Rule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GuildRules {
-    default_rules: BTreeSet<Rule>,
-    activities_rules: BTreeSet<Rule>,
+    pub default_rules: BTreeSet<Rule>,
+    pub activities_rules: BTreeSet<Rule>,
 }
 
 impl GuildRules {
@@ -46,21 +46,29 @@ impl GuildRules {
             activities_rules: BTreeSet::new(),
         }
     }
+
+    pub fn all_rules(&self) -> BTreeSet<&Rule> {
+        self.activities_rules.union(&self.default_rules).collect()
+    }
+
     pub fn matching_rules(&self, user_activities: BTreeSet<String>) -> BTreeSet<&Rule> {
         let activity_rules: BTreeSet<&Rule> = self
             .activities_rules
             .iter()
             .filter(|rule| {
                 rule.activities.iter().any(|rule_activity| {
-                    user_activities
-                        .iter()
-                        .any(|user_activity| user_activity.contains(rule_activity))
+                    user_activities.iter().any(|user_activity| {
+                        user_activity
+                            .to_lowercase()
+                            .contains(&rule_activity.to_lowercase().to_string())
+                    })
                 })
             })
             .collect();
         match activity_rules.is_empty() {
             false => activity_rules,
-            true => self.default_rules.iter().collect(),
+            true if !user_activities.is_empty() => self.default_rules.iter().collect(),
+            true => BTreeSet::new(),
         }
     }
 }

@@ -7,6 +7,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
+use twilight_model::gateway::payload::outgoing::UpdatePresence;
+use twilight_model::gateway::presence::Activity;
+use twilight_model::gateway::presence::Status;
 
 use tokio::{sync::Mutex, task::JoinHandle, time::sleep};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
@@ -22,7 +25,7 @@ use twilight_model::id::{
 use crate::rules_handler::{GuildRules, load_rules};
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
-const DEBOUNCE_DELAY: Duration = Duration::from_secs(60);
+const DEBOUNCE_DELAY: Duration = Duration::from_secs(1);
 
 pub struct DebounceTask {
     pub handle: JoinHandle<()>,
@@ -124,42 +127,53 @@ impl Bot {
                 Some(guild_rules) => guild_rules,
                 None => return,
             };
+            let managed_roles: BTreeSet<u64> =
+                guild_rules.all_rules().iter().map(|r| r.role_id).collect();
+
             let rules_to_assign = guild_rules.matching_rules(activities);
-            if rules_to_assign.is_empty() {
-                return;
-            }
+
             let roles_ids_to_assign: BTreeSet<u64> =
                 rules_to_assign.iter().map(|rule| rule.role_id).collect();
 
             if let Some(member) = cache.member(guild_id, user_id) {
-                // let has_role = member.roles.contains(&ROLE_ID);
-                // let has_role = member.roles().contains(&ROLE_ID);
-                let user_roles: BTreeSet<u64> =
-                    member.roles().iter().map(|role_id| role_id.get()).collect();
+                let user_roles: BTreeSet<u64> = member
+                    .roles()
+                    .iter()
+                    .map(|role_id| role_id.get())
+                    .filter(|r| managed_roles.contains(r))
+                    .collect();
 
                 let roles_to_add = roles_ids_to_assign.difference(&user_roles).cloned();
                 let roles_to_remove = user_roles.difference(&roles_ids_to_assign).cloned();
 
-                // for rid in roles_ids_to_assign {
-                //     if !user_roles.contains(rid) {}
-                // }
-
                 for rid in roles_to_add {
                     let role_id: Id<RoleMarker> = Id::new(rid);
 
+                    tracing::debug!("Assigning Role {role_id:?} to {user_id:?} in {guild_id:?}");
                     limiter.until_ready().await;
-                    let _ = http_client
+                    let r = http_client
                         .add_guild_member_role(guild_id, user_id, role_id)
                         .await;
+
+                    match r {
+                        Err(e) => tracing::error!(?e),
+                        Ok(_) => (),
+                    };
                 }
 
                 for rid in roles_to_remove {
                     let role_id: Id<RoleMarker> = Id::new(rid);
 
+                    tracing::debug!("Removing Role {role_id:?} to {user_id:?} in {guild_id:?}");
                     limiter.until_ready().await;
-                    let _ = http_client
+                    let r = http_client
                         .remove_guild_member_role(guild_id, user_id, role_id)
                         .await;
+
+                    match r {
+                        Err(e) => tracing::error!(?e),
+                        Ok(_) => (),
+                    };
                 }
             } else {
                 tracing::error!("Member not found in cache for user {user_id:?}");
@@ -187,6 +201,9 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Vec<JoinHandle<()>> {
     while let Some(item) = shard.next_event(EventTypeFlags::all()).await {
         let event = match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
+            Ok(Event::Ready(_)) => {
+                set_shard_activity(&shard, "Rolling Dice".to_string());
+            }
             Ok(event) => bot.process_event(event).await,
             Err(source) => {
                 tracing::error!(?source, "error receiving event");
@@ -198,6 +215,31 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Vec<JoinHandle<()>> {
     }
 
     vec![presence_handler_task]
+}
+
+pub fn set_shard_activity(shard: &Shard, activity: String) {
+    let activity = Activity {
+        name: activity,
+        kind: ActivityType::Playing,
+        url: None,
+        created_at: None,
+        timestamps: None,
+        application_id: None,
+        details: None,
+        state: None,
+        emoji: None,
+        party: None,
+        assets: None,
+        secrets: None,
+        instance: None,
+        flags: None,
+        buttons: vec![],
+        id: None,
+    };
+
+    let presence = UpdatePresence::new(vec![activity], false, None, Status::Online).unwrap();
+
+    shard.command(&presence);
 }
 
 mod tests {
