@@ -247,7 +247,7 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()
         match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
             Ok(Event::Ready(_)) => {
-                set_shard_activity(&shard, "Rolling Dice".to_string());
+                set_shard_activity(&shard, "Rolling Roles".to_string());
             }
             Ok(event) => bot.process_event(event).await?,
             Err(source) => {

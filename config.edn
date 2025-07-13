@@ -1,5 +1,0 @@
-{
- :playing "Setting Roles"
- :intents #{:guilds 
-            :guild-members 
-            :guild-presences}}
