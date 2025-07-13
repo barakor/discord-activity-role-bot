@@ -1,7 +1,6 @@
 use anyhow::Result;
 use anyhow::bail;
-use governor::DefaultDirectRateLimiter;
-use governor::Quota;
+use governor::{DefaultDirectRateLimiter, Quota};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::mem;
 use std::num::NonZeroU32;
@@ -14,21 +13,13 @@ use tokio::{sync::Mutex, task::JoinHandle};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
 use twilight_http::Client;
-use twilight_http::request::application::interaction;
-use twilight_model::application::interaction::Interaction;
-use twilight_model::application::interaction::InteractionData;
-use twilight_model::application::interaction::application_command::CommandData;
-use twilight_model::gateway::payload::incoming::GuildCreate;
-use twilight_model::gateway::payload::incoming::PresenceUpdate;
-use twilight_model::gateway::payload::outgoing::UpdatePresence;
-use twilight_model::gateway::payload::outgoing::update_presence::UpdatePresencePayload;
-use twilight_model::gateway::presence;
-use twilight_model::gateway::presence::Activity;
-use twilight_model::gateway::presence::ActivityType;
-use twilight_model::gateway::presence::ClientStatus;
-use twilight_model::gateway::presence::MinimalActivity;
-use twilight_model::gateway::presence::Presence;
-use twilight_model::gateway::presence::Status;
+use twilight_model::application::interaction::{
+    Interaction, InteractionData, application_command::CommandData,
+};
+use twilight_model::gateway::{
+    payload::incoming::{GuildCreate, PresenceUpdate},
+    presence::ActivityType,
+};
 use twilight_model::id::{
     Id,
     marker::{GuildMarker, UserMarker},
