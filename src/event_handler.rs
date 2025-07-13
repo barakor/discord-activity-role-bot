@@ -97,10 +97,10 @@ impl Bot {
                     Some(InteractionData::ApplicationCommand(data)) => *data,
                     _ => {
                         tracing::warn!("ignoring non-command interaction");
-                        return Err(anyhow::format_err!("asdasd"));
+                        return Err(anyhow::format_err!("asd"));
                     }
                 };
-                self.handle_command(interaction, data).await;
+                let _ = self.handle_command(interaction, data).await;
             }
             _ => (),
         };

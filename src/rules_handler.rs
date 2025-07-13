@@ -1,10 +1,12 @@
 use std::{
+    clone,
     collections::{BTreeMap, BTreeSet},
     fs::File,
     io::BufReader,
 };
 
 use serde::Deserialize;
+use twilight_model::channel::message::embed::EmbedField;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RoleType {
@@ -31,6 +33,22 @@ pub struct Rule {
     pub role_type: RoleType,
     pub activities: BTreeSet<String>,
     pub comments: String,
+}
+
+impl Into<EmbedField> for Rule {
+    fn into(self) -> EmbedField {
+        let activities: Vec<String> = self.activities.iter().map(|x| x.to_string()).collect();
+        let rule_value = if activities.is_empty() {
+            "Default Role".to_string()
+        } else {
+            activities.join(", ")
+        };
+        EmbedField {
+            inline: false,
+            name: self.role_name,
+            value: rule_value,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -73,6 +91,16 @@ impl GuildRules {
             false => activity_rules,
             true => self.default_rules.iter().collect(),
         }
+    }
+}
+
+impl Into<Vec<EmbedField>> for GuildRules {
+    fn into(self) -> Vec<EmbedField> {
+        self.activities_rules
+            .iter()
+            .map(|r| r.clone().into())
+            .chain(self.default_rules.iter().map(|r| r.clone().into()))
+            .collect()
     }
 }
 

@@ -206,14 +206,17 @@ impl GuildRulesList {
 
         let title = format!("Guild Rules");
 
-        let embed = EmbedBuilder::new()
+        let fields = match guild_rules {
+            Some(guild_rules) => guild_rules.clone().into(),
+            None => vec![],
+        };
+
+        let mut embed = EmbedBuilder::new()
             .color(0x2f3136) // Dark theme color, render a "transparent" background
             .title(title)
-            .field(EmbedFieldBuilder::new(
-                "rules field",
-                format!("{:?}", guild_rules),
-            ))
             .build();
+
+        embed.fields = fields;
 
         let client = client.interaction(interaction.application_id);
         let data = InteractionResponseDataBuilder::new()
