@@ -34,6 +34,7 @@ use twilight_model::id::{
     marker::{GuildMarker, UserMarker},
 };
 
+use crate::discord_utils::purge_guild_roles;
 use crate::events::easter;
 use crate::events::update_roles_by_activity;
 use crate::interactions::command::GuildRulesList;
@@ -94,8 +95,8 @@ impl Bot {
             Event::GuildCreate(guild_create) => match *guild_create {
                 GuildCreate::Available(guild_data) => {
                     let guild_id = guild_data.id;
-                    self.guild_role_purge(guild_id).await?;
-                    self.lazy_null(guild_id).await?;
+                    self.guild_role_purge(guild_id).await;
+                    self.lazy_null(guild_id).await;
                 }
                 GuildCreate::Unavailable(_) => (),
             },
@@ -193,71 +194,22 @@ impl Bot {
         );
     }
 
-    pub async fn get_all_guild_members(
-        &self,
-        guild_id: Id<GuildMarker>,
-    ) -> Result<Vec<Id<UserMarker>>> {
-        let mut after: Option<Id<UserMarker>> = None;
-        let mut user_ids = Vec::new();
-
-        loop {
-            let members_result = self
-                .http_client
-                .guild_members(guild_id)
-                .limit(1000)
-                .after(after.unwrap_or(Id::new(1)))
-                .await?;
-
-            let members = members_result.model().await?;
-
-            if members.is_empty() {
-                break;
-            }
-
-            user_ids.extend(members.iter().map(|m| m.user.id));
-
-            after = Some(members.last().unwrap().user.id);
-        }
-
-        Ok(user_ids)
+    pub async fn guild_role_purge(&self, guild_id: Id<GuildMarker>) {
+        tokio::spawn(purge_guild_roles(
+            self.http_client.clone(),
+            self.cache.clone(),
+            self.presence_queue.clone(),
+            guild_id.clone(),
+        ));
     }
 
-    pub async fn guild_role_purge(&self, guild_id: Id<GuildMarker>) -> Result<()> {
-        let guild_members = self.get_all_guild_members(guild_id).await?;
-        let mut queue = self.presence_queue.lock().await;
-        for user_id in guild_members {
-            let (status, activities) = match self.cache.presence(guild_id, user_id) {
-                Some(presence) => (
-                    presence.status().clone(),
-                    presence.activities().iter().map(|x| x.clone()).collect(),
-                ),
-                None => (Status::Offline, vec![]),
-            };
-
-            let presence = Presence {
-                activities,
-                client_status: ClientStatus {
-                    desktop: None,
-                    mobile: None,
-                    web: None,
-                },
-                guild_id,
-                status,
-                user: presence::UserOrId::UserId { id: user_id },
-            };
-            queue.insert((guild_id, user_id), PresenceUpdate(presence));
-        }
-        Ok({})
-    }
-
-    pub async fn lazy_null(&self, guild_id: Id<GuildMarker>) -> Result<()> {
-        easter(
+    pub async fn lazy_null(&self, guild_id: Id<GuildMarker>) {
+        tokio::spawn(easter(
             self.http_client.clone(),
             self.rate_limiter.clone(),
             self.cache.clone(),
             guild_id,
-        )
-        .await
+        ));
     }
 }
 

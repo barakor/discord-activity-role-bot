@@ -1,4 +1,5 @@
 mod config_handler;
+mod discord_utils;
 mod event_handler;
 mod events;
 mod interactions;
