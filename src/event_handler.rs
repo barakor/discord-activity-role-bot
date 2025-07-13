@@ -31,7 +31,7 @@ use crate::events::update_roles_by_activity;
 use crate::rules_handler::{GuildRules, load_rules};
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
-pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(1);
+pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(10);
 
 pub struct DebounceTask {
     pub handle: JoinHandle<()>,
