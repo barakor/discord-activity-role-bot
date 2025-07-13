@@ -19,7 +19,7 @@ async fn boot_shards(config: EnvConfig) -> Result<(Client, Vec<Shard>)> {
     let token = config.discord_token;
     // Initialize the tracing subscriber.
 
-    let intents = Intents::GUILD_PRESENCES | Intents::GUILDS;
+    let intents = Intents::GUILD_PRESENCES | Intents::GUILDS | Intents::GUILD_MEMBERS;
     let client = Client::new(token.clone());
     let config = Config::new(token, intents);
 

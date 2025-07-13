@@ -52,6 +52,10 @@ impl GuildRules {
     }
 
     pub fn matching_rules(&self, user_activities: BTreeSet<String>) -> BTreeSet<&Rule> {
+        if user_activities.is_empty() {
+            return BTreeSet::new();
+        };
+
         let activity_rules: BTreeSet<&Rule> = self
             .activities_rules
             .iter()
@@ -67,8 +71,7 @@ impl GuildRules {
             .collect();
         match activity_rules.is_empty() {
             false => activity_rules,
-            true if !user_activities.is_empty() => self.default_rules.iter().collect(),
-            true => BTreeSet::new(),
+            true => self.default_rules.iter().collect(),
         }
     }
 }

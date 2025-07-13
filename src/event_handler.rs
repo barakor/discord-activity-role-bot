@@ -66,8 +66,6 @@ impl Bot {
 
     /// Function to eat up an event and decide how to handle it, runs as part of the main thread, should not block  
     pub async fn process_event(&self, event: Event) {
-        self.cache.update(&event);
-
         match event {
             Event::PresenceUpdate(presence_update) => {
                 // self.handle_presence_update(*presence_update).await;
@@ -89,7 +87,12 @@ impl Bot {
             let mut map = self.presence_queue.lock().await;
 
             for ((guild_id, user_id), presence_update) in map.drain() {
-                tracing::debug!(?guild_id, ?user_id, "Processing latest activity for user:");
+                tracing::debug!(
+                    ?guild_id,
+                    ?user_id,
+                    ?presence_update,
+                    "Processing latest activity for user:"
+                );
                 self.handle_presence_update(presence_update).await
             }
         }
@@ -149,14 +152,14 @@ impl Bot {
                 for rid in roles_to_add {
                     let role_id: Id<RoleMarker> = Id::new(rid);
 
-                    tracing::debug!("Assigning Role {role_id:?} to {user_id:?} in {guild_id:?}");
+                    tracing::warn!("Assigning Role {role_id:?} to {user_id:?} in {guild_id:?}");
                     limiter.until_ready().await;
                     let r = http_client
                         .add_guild_member_role(guild_id, user_id, role_id)
                         .await;
 
                     match r {
-                        Err(e) => tracing::error!(?e),
+                        Err(e) => tracing::error!(?e, "Couldn't add role"),
                         Ok(_) => (),
                     };
                 }
@@ -164,14 +167,14 @@ impl Bot {
                 for rid in roles_to_remove {
                     let role_id: Id<RoleMarker> = Id::new(rid);
 
-                    tracing::debug!("Removing Role {role_id:?} to {user_id:?} in {guild_id:?}");
+                    tracing::warn!("Removing Role {role_id:?} to {user_id:?} in {guild_id:?}");
                     limiter.until_ready().await;
                     let r = http_client
                         .remove_guild_member_role(guild_id, user_id, role_id)
                         .await;
 
                     match r {
-                        Err(e) => tracing::error!(?e),
+                        Err(e) => tracing::error!(?e, "Couldn't remove role"),
                         Ok(_) => (),
                     };
                 }
@@ -199,6 +202,13 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Vec<JoinHandle<()>> {
     // Event loop
 
     while let Some(item) = shard.next_event(EventTypeFlags::all()).await {
+        match &item {
+            Ok(event) => {
+                bot.cache.update(event);
+            }
+            _ => (),
+        };
+
         let event = match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
             Ok(Event::Ready(_)) => {
