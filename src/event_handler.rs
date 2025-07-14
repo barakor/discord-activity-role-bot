@@ -9,6 +9,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
+use tokio::time::sleep;
 use tokio::{sync::Mutex, task::JoinHandle};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
@@ -35,15 +36,12 @@ use crate::rules_handler::{GuildRules, load_rules};
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(10);
 
-pub struct DebounceTask {
-    pub handle: JoinHandle<()>,
-}
-
+#[derive(Clone)]
 pub struct Bot {
     pub http_client: Arc<Client>,
     pub rules: BTreeMap<u64, GuildRules>,
     pub cache: Arc<InMemoryCache>,
-    pub debounce_tasks: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), DebounceTask>>>,
+    pub debounce_tasks: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), JoinHandle<()>>>>,
     pub presence_queue: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), PresenceUpdate>>>,
     pub rate_limiter: Arc<DefaultDirectRateLimiter>,
 }
@@ -72,22 +70,34 @@ impl Bot {
         }
     }
 
-    /// Function to eat up an event and decide how to handle it, runs as part of the main thread, should not block  
+    /// Function to eat up an event and decide how to handle it
     pub async fn process_event(&self, event: Event) -> Result<()> {
         match event {
             Event::PresenceUpdate(presence_update) => {
                 // self.handle_presence_update(*presence_update).await;
-
-                let mut queue = self.presence_queue.lock().await;
+                let presence_queue = self.presence_queue.clone();
                 let guild_id = presence_update.guild_id;
                 let user_id = presence_update.user.id();
-                queue.insert((guild_id, user_id), *presence_update);
+                presence_queue
+                    .lock()
+                    .await
+                    .insert((guild_id, user_id), *presence_update);
             }
             Event::GuildCreate(guild_create) => match *guild_create {
                 GuildCreate::Available(guild_data) => {
                     let guild_id = guild_data.id;
-                    self.guild_role_purge(guild_id).await;
-                    self.lazy_null(guild_id).await;
+                    tokio::spawn(purge_guild_roles(
+                        self.http_client.clone(),
+                        self.cache.clone(),
+                        self.presence_queue.clone(),
+                        guild_id.clone(),
+                    ));
+                    tokio::spawn(easter(
+                        self.http_client.clone(),
+                        self.rate_limiter.clone(),
+                        self.cache.clone(),
+                        guild_id,
+                    ));
                 }
                 GuildCreate::Unavailable(_) => (),
             },
@@ -147,18 +157,6 @@ impl Bot {
         let user_id = presence.user.id();
 
         let key = (guild_id, user_id);
-        let mut tasks = self.debounce_tasks.lock().await;
-
-        // Cancel existing task if exists
-        if let Some(task) = tasks.remove(&key) {
-            task.handle.abort();
-        }
-
-        // Schedule new debounce task
-        let cache = self.cache.clone();
-        let limiter = self.rate_limiter.clone();
-        let roles_rules = self.rules.clone();
-        let http_client = self.http_client.clone();
 
         let user_activities: BTreeSet<String> = presence
             .activities
@@ -167,49 +165,34 @@ impl Bot {
             .map(|activity| activity.name.to_string())
             .collect();
 
-        let task_handle = tokio::spawn(update_roles_by_activity(
-            http_client,
-            limiter,
-            cache,
-            roles_rules,
-            guild_id,
-            user_id,
-            user_activities,
-        ));
-
-        tasks.insert(
-            key,
-            DebounceTask {
-                handle: task_handle,
-            },
-        );
-    }
-
-    pub async fn guild_role_purge(&self, guild_id: Id<GuildMarker>) {
-        tokio::spawn(purge_guild_roles(
-            self.http_client.clone(),
-            self.cache.clone(),
-            self.presence_queue.clone(),
-            guild_id.clone(),
-        ));
-    }
-
-    pub async fn lazy_null(&self, guild_id: Id<GuildMarker>) {
-        tokio::spawn(easter(
+        // Cancel existing task if exists
+        let mut tasks = self.debounce_tasks.lock().await;
+        if let Some(task) = tasks.remove(&key) {
+            task.abort();
+        }
+        let future = update_roles_by_activity(
             self.http_client.clone(),
             self.rate_limiter.clone(),
             self.cache.clone(),
+            self.rules.clone(),
             guild_id,
-        ));
+            user_id,
+            user_activities,
+        );
+        let task_handle = tokio::spawn(async {
+            sleep(DEBOUNCE_DELAY).await;
+            future.await;
+        });
+
+        tasks.insert(key, task_handle);
     }
 }
 
 /// entry point for the shard to run, the "main" function
-pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()>>> {
+pub async fn runner(mut shard: Shard, bot: Arc<Bot>) {
     // Processing task
     let presence_handler_bot = bot.clone();
-    let presence_handler_task =
-        tokio::spawn(async move { presence_handler_bot.presence_update_loop_handler().await });
+    tokio::spawn(async move { presence_handler_bot.presence_update_loop_handler().await });
 
     // Event loop
 
@@ -218,22 +201,25 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()
 
         match &item {
             Ok(event) => {
-                bot.cache.update(event);
+                let event = event.clone();
+                let bot = bot.clone();
+                tokio::spawn(async move { bot.cache.update(&event) });
             }
             _ => (),
         };
 
         match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
-            Ok(event) => bot.process_event(event).await?,
+            Ok(event) => {
+                let bot = bot.clone();
+                tokio::spawn(async move { bot.process_event(event).await })
+            }
             Err(source) => {
                 tracing::error!(?source, "error receiving event");
                 continue;
             }
         };
     }
-
-    Ok(vec![presence_handler_task])
 }
 
 #[allow(unused_imports)]

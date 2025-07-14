@@ -114,8 +114,8 @@ impl From<CsvRow> for Rule {
         let activities = row
             .activity_names
             .split(';')
-            .filter(|s| !s.trim().is_empty())
             .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
             .collect();
 
         Rule {
