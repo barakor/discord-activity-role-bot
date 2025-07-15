@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::{sync::Mutex, task::JoinHandle, time::sleep};
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_http::Client;
+use twilight_http::{Client, request::guild::member::AddRoleToMember};
 use twilight_model::{
     gateway::presence::{Activity, ActivityType},
     id::{
@@ -86,11 +86,9 @@ pub async fn update_roles_by_activity(
         let r = http_client
             .add_guild_member_role(guild_id, user_id, role_id)
             .await;
-
-        match r {
-            Err(e) => tracing::error!(?e, "Couldn't add role"),
-            Ok(_) => (),
-        };
+        if let Err(e) = r {
+            tracing::error!(?e, "Couldn't add role")
+        }
     }
 
     for role_id in roles_to_remove {
@@ -99,10 +97,9 @@ pub async fn update_roles_by_activity(
             .remove_guild_member_role(guild_id, user_id, role_id)
             .await;
 
-        match r {
-            Err(e) => tracing::error!(?e, "Couldn't remove role"),
-            Ok(_) => (),
-        };
+        if let Err(e) = r {
+            tracing::error!(?e, "Couldn't remove role")
+        }
     }
 }
 

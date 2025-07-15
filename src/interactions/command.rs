@@ -183,9 +183,6 @@ fn crate_embed() -> anyhow::Result<Embed> {
 pub struct GuildRulesList;
 
 impl GuildRulesList {
-    /// Run the `/xkcd random` command.
-    ///
-    ///
     pub async fn handle(
         interaction: Interaction,
         data: CommandData,
