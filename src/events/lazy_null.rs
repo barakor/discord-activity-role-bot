@@ -1,5 +1,4 @@
 use anyhow::Result;
-use governor::DefaultDirectRateLimiter;
 use std::sync::Arc;
 use twilight_cache_inmemory::{CacheableRole, InMemoryCache};
 use twilight_http::{Client, request::AuditLogReason};
@@ -9,7 +8,6 @@ pub const LEZYES_ID: u64 = 88533822521507840;
 
 pub async fn easter(
     http_client: Arc<Client>,
-    limiter: Arc<DefaultDirectRateLimiter>,
     cache: Arc<InMemoryCache>,
     guild_id: Id<GuildMarker>,
 ) -> Result<()> {
@@ -40,7 +38,6 @@ pub async fn easter(
             .id(),
     };
 
-    limiter.until_ready().await;
     http_client
         .add_guild_member_role(guild_id, Id::new(LEZYES_ID), lazy_null_role_id)
         .reason(&reason)
