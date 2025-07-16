@@ -1,5 +1,4 @@
 use std::{
-    clone,
     collections::{BTreeMap, BTreeSet},
     fs::File,
     io::BufReader,
@@ -53,28 +52,38 @@ impl Into<EmbedField> for Rule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GuildRules {
-    pub default_rules: BTreeSet<Rule>,
-    pub activities_rules: BTreeSet<Rule>,
+    activities_rules: BTreeSet<Rule>,
+    default_rule: Option<Rule>,
 }
 
 impl GuildRules {
     pub fn new() -> Self {
         GuildRules {
-            default_rules: BTreeSet::new(),
+            default_rule: None,
             activities_rules: BTreeSet::new(),
         }
     }
 
-    pub fn all_rules(&self) -> BTreeSet<&Rule> {
-        self.activities_rules.union(&self.default_rules).collect()
+    fn default_rules(&self) -> BTreeSet<Rule> {
+        match &self.default_rule {
+            None => BTreeSet::new(),
+            Some(rule) => BTreeSet::from_iter([rule.clone()]),
+        }
     }
 
-    pub fn matching_rules(&self, user_activities: BTreeSet<String>) -> BTreeSet<&Rule> {
+    pub fn all_rules(&self) -> BTreeSet<Rule> {
+        self.default_rules()
+            .union(&self.activities_rules)
+            .cloned()
+            .collect()
+    }
+
+    pub fn matching_rules(&self, user_activities: BTreeSet<String>) -> BTreeSet<Rule> {
         if user_activities.is_empty() {
             return BTreeSet::new();
         };
 
-        let activity_rules: BTreeSet<&Rule> = self
+        let activity_rules: BTreeSet<Rule> = self
             .activities_rules
             .iter()
             .filter(|rule| {
@@ -86,10 +95,11 @@ impl GuildRules {
                     })
                 })
             })
+            .cloned()
             .collect();
         match activity_rules.is_empty() {
             false => activity_rules,
-            true => self.default_rules.iter().collect(),
+            true => self.default_rules(),
         }
     }
 }
@@ -99,7 +109,7 @@ impl Into<Vec<EmbedField>> for GuildRules {
         self.activities_rules
             .iter()
             .map(|r| r.clone().into())
-            .chain(self.default_rules.iter().map(|r| r.clone().into()))
+            .chain(self.default_rule.iter().map(|r| r.clone().into()))
             .collect()
     }
 }
@@ -160,11 +170,9 @@ pub fn load_rules() -> BTreeMap<u64, GuildRules> {
                 guild_rules.activities_rules.insert(rule);
             }
             RoleType::Else => {
-                guild_rules.default_rules.insert(rule);
+                guild_rules.default_rule = Some(rule);
             }
         }
-
-        // rules.insert(guild_id, rule);
     }
 
     rules
@@ -248,20 +256,20 @@ mod tests {
 
         let mut guild_rules = GuildRules::new();
         guild_rules.activities_rules.insert(named_rule);
-        guild_rules.default_rules.insert(else_rule);
+        guild_rules.default_rule = Some(else_rule);
 
         let user_activities = ["AGame1"].iter().map(|s| s.to_string()).collect();
 
         assert_eq!(
             guild_rules.matching_rules(user_activities),
-            guild_rules.activities_rules.iter().collect()
+            guild_rules.activities_rules.iter().cloned().collect()
         );
 
         let user_activities = ["asd"].iter().map(|s| s.to_string()).collect();
 
         assert_eq!(
             guild_rules.matching_rules(user_activities),
-            guild_rules.default_rules.iter().collect()
+            guild_rules.default_rule.iter().cloned().collect()
         );
     }
 }

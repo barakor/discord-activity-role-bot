@@ -1,13 +1,19 @@
 use crate::{event_handler::DEBOUNCE_DELAY, rules_handler::GuildRules};
+use anyhow::{Result, anyhow};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
 };
-use tokio::{sync::Mutex, task::JoinHandle, time::sleep};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+    time::sleep,
+};
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_http::{Client, request::guild::member::AddRoleToMember};
+use twilight_http::Client;
 use twilight_model::{
     gateway::presence::{Activity, ActivityType},
+    guild,
     id::{
         Id,
         marker::{GuildMarker, RoleMarker, UserMarker},
@@ -20,15 +26,10 @@ pub struct RolesToChange {
 }
 
 pub fn roles_for_activity(
-    roles_rules: Arc<BTreeMap<u64, GuildRules>>,
-    guild_id: Id<GuildMarker>,
+    guild_rules: GuildRules,
     user_roles: BTreeSet<Id<RoleMarker>>,
     user_activities: BTreeSet<String>,
 ) -> Option<RolesToChange> {
-    let guild_rules = match roles_rules.get(&guild_id.get()) {
-        Some(guild_rules) => guild_rules,
-        None => return None,
-    };
     let managed_roles: BTreeSet<u64> = guild_rules.all_rules().iter().map(|r| r.role_id).collect();
 
     let rules_to_assign = guild_rules.matching_rules(user_activities);
@@ -60,26 +61,27 @@ pub fn roles_for_activity(
 pub async fn update_roles_by_activity(
     http_client: Arc<Client>,
     cache: Arc<InMemoryCache>,
-    roles_rules: Arc<BTreeMap<u64, GuildRules>>,
+    roles_rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     guild_id: Id<GuildMarker>,
     user_id: Id<UserMarker>,
     user_activities: BTreeSet<String>,
-) {
-    let user_roles: BTreeSet<Id<RoleMarker>> = match cache.member(guild_id, user_id) {
-        Some(member) => member.roles().iter().cloned().collect(),
-        None => {
-            tracing::error!("Member not found in cache for user {user_id:?}");
-            return;
-        }
-    };
+) -> Option<()> {
+    let user_roles: BTreeSet<Id<RoleMarker>> = cache
+        .member(guild_id, user_id)?
+        .roles()
+        .iter()
+        .cloned()
+        .collect();
+
+    let guild_rules = {
+        let rules_reader = roles_rules.read().await;
+        rules_reader.get(&guild_id.get()).cloned()
+    }?;
 
     let RolesToChange {
         roles_to_add,
         roles_to_remove,
-    } = match roles_for_activity(roles_rules, guild_id, user_roles, user_activities) {
-        Some(x) => x,
-        None => return,
-    };
+    } = roles_for_activity(guild_rules, user_roles, user_activities)?;
 
     for role_id in roles_to_add {
         tracing::warn!("Assigning Role {role_id:?} to {user_id:?} in {guild_id:?}");
@@ -101,6 +103,8 @@ pub async fn update_roles_by_activity(
             tracing::error!(?e, "Couldn't remove role")
         }
     }
+
+    return None;
 }
 
 pub fn user_activities_from_presence<'a, T: Iterator<Item = &'a Activity>>(
@@ -115,7 +119,7 @@ pub fn user_activities_from_presence<'a, T: Iterator<Item = &'a Activity>>(
 /// the actual logic to change roles for users based on presence
 pub async fn handle_presence_update(
     http_client: Arc<Client>,
-    rules: Arc<BTreeMap<u64, GuildRules>>,
+    rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     cache: Arc<InMemoryCache>,
     presence_update_tasks: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), JoinHandle<()>>>>,
     guild_id: Id<GuildMarker>,

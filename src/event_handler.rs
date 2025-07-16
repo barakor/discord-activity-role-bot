@@ -14,7 +14,10 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
 use twilight_http::Client;
@@ -33,7 +36,7 @@ pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(10);
 #[derive(Clone)]
 pub struct Bot {
     pub http_client: Arc<Client>,
-    pub rules: Arc<BTreeMap<u64, GuildRules>>,
+    pub rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     pub cache: Arc<InMemoryCache>,
     pub presence_update_tasks:
         Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), JoinHandle<()>>>>,
@@ -47,7 +50,7 @@ impl Bot {
                 .build(),
         );
         let presence_update_tasks = Arc::new(Mutex::new(HashMap::new()));
-        let rules = Arc::new(load_rules());
+        let rules = Arc::new(RwLock::new(load_rules()));
 
         Self {
             http_client,

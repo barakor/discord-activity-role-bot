@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context;
+use tokio::sync::RwLock;
 use twilight_http::Client;
 use twilight_interactions::command::{CommandModel, CreateCommand, DescLocalizations};
 use twilight_model::{
@@ -11,7 +12,7 @@ use twilight_model::{
 };
 use twilight_util::builder::{
     InteractionResponseDataBuilder,
-    embed::{EmbedBuilder, EmbedFieldBuilder, ImageSource},
+    embed::{EmbedBuilder, ImageSource},
 };
 
 use crate::rules_handler::GuildRules;
@@ -187,7 +188,7 @@ impl GuildRulesList {
         interaction: Interaction,
         data: CommandData,
         client: &Client,
-        rules: &BTreeMap<u64, GuildRules>,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     ) -> anyhow::Result<()> {
         // Call the appropriate subcommand.
         GuildRulesList.run(interaction, client, rules).await
@@ -197,9 +198,14 @@ impl GuildRulesList {
         &self,
         interaction: Interaction,
         client: &Client,
-        rules: &BTreeMap<u64, GuildRules>,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     ) -> anyhow::Result<()> {
-        let guild_rules = rules.get(&interaction.guild_id.unwrap_or(Id::new(1)).get());
+        let guild_rules = {
+            let rules_reader = rules.read().await;
+            rules_reader
+                .get(&interaction.guild_id.unwrap_or(Id::new(1)).get())
+                .cloned()
+        };
 
         let title = format!("Guild Rules");
 

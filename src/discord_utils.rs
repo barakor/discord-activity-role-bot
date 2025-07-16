@@ -7,7 +7,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
 };
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client;
 use twilight_model::id::{
@@ -45,7 +48,7 @@ pub async fn get_all_guild_members(
 
 pub async fn purge_guild_roles(
     http_client: Arc<Client>,
-    rules: Arc<BTreeMap<u64, GuildRules>>,
+    rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     cache: Arc<InMemoryCache>,
     presence_update_tasks: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), JoinHandle<()>>>>,
     guild_id: Id<GuildMarker>,
