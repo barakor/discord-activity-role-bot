@@ -2,6 +2,7 @@ mod config_handler;
 mod discord_utils;
 mod event_handler;
 mod events;
+mod github_handler;
 mod interactions;
 mod rules_handler;
 
@@ -55,6 +56,7 @@ async fn main() -> Result<()> {
 
     let config = get_config()?;
 
+    github_handler::start(&config.github_token).await?;
     let (client, shards) = boot_shards(config).await?;
 
     // Register global commands.
@@ -85,7 +87,7 @@ async fn main() -> Result<()> {
     let mut tasks = Vec::with_capacity(shards.len());
 
     tracing::debug!("Spawned Shards: {}", &shards.len());
-    let bot = Arc::new(Bot::new(Arc::new(client)));
+    let bot = Arc::new(Bot::new(Arc::new(client)).await);
 
     for shard in shards {
         senders.push(shard.sender());
@@ -124,12 +126,9 @@ pub fn bot_presence(activity: String) -> UpdatePresencePayload {
 
 #[cfg(test)]
 mod tests {
-
-    use twilight_gateway::{Event, EventTypeFlags, StreamExt as _};
-
-    use crate::config_handler::get_testing_config;
-
     use super::*;
+    use crate::config_handler::get_testing_config;
+    use twilight_gateway::{Event, EventTypeFlags, StreamExt as _};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn start_2nd_bot_with_activity() {

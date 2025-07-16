@@ -1,12 +1,15 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
-    io::BufReader,
+    io::{BufReader, Read},
 };
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use twilight_model::channel::message::embed::EmbedField;
+
+use crate::github_handler::{get_bytes_buffer_from_url, upload_bytes_to_github};
+use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RoleType {
@@ -189,12 +192,11 @@ struct CsvRow {
     comments: String,
 }
 
-pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRules>> {
-    let file = File::open(file_path)?;
-    let mut rdr = csv::Reader::from_reader(BufReader::new(file));
+pub fn load_rules_from_buffer<R: Read>(reader: R) -> Result<BTreeMap<u64, GuildRules>> {
+    let mut reader_buffer = csv::Reader::from_reader(reader);
     let mut rules = BTreeMap::new();
 
-    for result in rdr.deserialize() {
+    for result in reader_buffer.deserialize() {
         let row: CsvRow = result?;
         let rule: Rule = row.into();
 
@@ -213,9 +215,20 @@ pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRule
     Ok(rules)
 }
 
-pub fn save_rules_to_file(rules: &BTreeMap<u64, GuildRules>, file_path: String) -> Result<()> {
-    let file = File::create(file_path)?;
-    let mut wtr = csv::Writer::from_writer(file);
+pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRules>> {
+    let file = File::open(file_path)?;
+    Ok(load_rules_from_buffer(BufReader::new(file))?)
+}
+
+pub async fn load_rules_from_github() -> Result<BTreeMap<u64, GuildRules>> {
+    let url = "https://raw.githubusercontent.com/barakor/discord-activity-role-bot/db-data/db.csv";
+    Ok(load_rules_from_buffer(
+        get_bytes_buffer_from_url(url).await?,
+    )?)
+}
+
+pub fn rules_to_csv_bytes(rules: &BTreeMap<u64, GuildRules>) -> Result<Vec<u8>> {
+    let mut wtr = csv::Writer::from_writer(Vec::new());
 
     // Collect all rules from all guilds
     let mut all_csv_rows: Vec<CsvRow> = rules
@@ -235,6 +248,12 @@ pub fn save_rules_to_file(rules: &BTreeMap<u64, GuildRules>, file_path: String) 
     }
 
     wtr.flush()?;
+    Ok(wtr.into_inner()?)
+}
+
+pub fn save_rules_to_file(rules: &BTreeMap<u64, GuildRules>, file_path: String) -> Result<()> {
+    let csv_bytes = rules_to_csv_bytes(rules)?;
+    std::fs::write(file_path, csv_bytes)?;
     Ok(())
 }
 
@@ -242,10 +261,29 @@ pub fn save_db_to_file(rules: &BTreeMap<u64, GuildRules>) -> Result<()> {
     save_rules_to_file(rules, "db.csv".to_string())
 }
 
-pub fn load_db_from_file() -> BTreeMap<u64, GuildRules> {
-    match load_rules_from_file("db.csv".to_string()) {
-        Ok(rules) => rules,
-        Err(_) => panic!(), // should load from github
+pub async fn save_db_to_github(
+    rules: &BTreeMap<u64, GuildRules>,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+) -> Result<()> {
+    let csv_bytes = rules_to_csv_bytes(rules)?;
+    let bytes = Bytes::from(csv_bytes);
+
+    upload_bytes_to_github(&bytes, owner, repo, "db.csv", branch).await
+}
+
+pub async fn save_db_to_github_default(rules: &BTreeMap<u64, GuildRules>) -> Result<()> {
+    save_db_to_github(rules, "barakor", "discord-activity-role-bot", "db-data").await
+}
+
+pub async fn load_db() -> BTreeMap<u64, GuildRules> {
+    if let Ok(db) = load_rules_from_file("db.csv".to_string()) {
+        db
+    } else if let Ok(db) = load_rules_from_github().await {
+        db
+    } else {
+        BTreeMap::new()
     }
 }
 
@@ -253,9 +291,26 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
 
-    #[test]
-    fn test_save_db_to_file() {
-        save_rules_to_file(&load_db_from_file(), "db_test.csv".to_string());
+    #[tokio::test]
+    async fn test_save_db_to_file() {
+        save_rules_to_file(&load_db().await, "db_test.csv".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_save_db_equals() {
+        assert_eq!(
+            load_rules_from_file("db.csv".to_string()).unwrap(),
+            load_rules_from_github().await.unwrap()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_save_db_to_github() {
+        let rules = load_db().await;
+        // This test will only work if GitHub token is configured
+        let _result =
+            save_db_to_github(&rules, "barakor", "discord-activity-role-bot", "db-data").await;
+        // We don't assert here since it depends on GitHub authentication
     }
 
     #[test]
