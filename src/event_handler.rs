@@ -2,7 +2,7 @@ use crate::{
     discord_utils::purge_guild_roles,
     events::{easter, handle_presence_update, user_activities_from_presence},
     interactions::command::{GuildRulesList, XkcdCommand},
-    rules_handler::{GuildRules, load_rules},
+    rules_handler::{GuildRules, load_db_from_file, load_rules_from_file},
 };
 use anyhow::{Result, bail};
 use std::{
@@ -50,7 +50,7 @@ impl Bot {
                 .build(),
         );
         let presence_update_tasks = Arc::new(Mutex::new(HashMap::new()));
-        let rules = Arc::new(RwLock::new(load_rules()));
+        let rules = Arc::new(RwLock::new(load_db_from_file()));
 
         Self {
             http_client,

@@ -4,7 +4,8 @@ use std::{
     io::BufReader,
 };
 
-use serde::Deserialize;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use twilight_model::channel::message::embed::EmbedField;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -19,6 +20,13 @@ impl RoleType {
             "named-activity" => Some(RoleType::NamedActivity),
             "else" => Some(RoleType::Else),
             _ => None,
+        }
+    }
+
+    fn to_str(&self) -> &str {
+        match self {
+            RoleType::NamedActivity => "named-activity",
+            RoleType::Else => "else",
         }
     }
 }
@@ -140,7 +148,34 @@ impl From<CsvRow> for Rule {
     }
 }
 
-#[derive(Debug, Deserialize)]
+impl Into<CsvRow> for Rule {
+    fn into(self) -> CsvRow {
+        let mut activities: Vec<String> = self.activities.iter().cloned().collect();
+        activities.sort();
+        CsvRow {
+            guild_id: self.guild_id.to_string(),
+            guild_name: self.guild_name,
+            role_id: self.role_id.to_string(),
+            role_name: self.role_name,
+            role_type: self.role_type.to_str().to_string(),
+            activity_names: activities.join(";"),
+            comments: self.comments,
+        }
+    }
+}
+
+impl Into<Vec<CsvRow>> for GuildRules {
+    fn into(self) -> Vec<CsvRow> {
+        let mut rows = match self.default_rule {
+            Some(r) => vec![r.into()],
+            None => vec![],
+        };
+        rows.extend(self.activities_rules.iter().map(|r| r.clone().into()));
+        rows
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 struct CsvRow {
     guild_id: String,
     guild_name: String,
@@ -154,13 +189,13 @@ struct CsvRow {
     comments: String,
 }
 
-pub fn load_rules() -> BTreeMap<u64, GuildRules> {
-    let file = File::open("db.csv").expect("CSV file not found");
+pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRules>> {
+    let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(BufReader::new(file));
     let mut rules = BTreeMap::new();
 
     for result in rdr.deserialize() {
-        let row: CsvRow = result.expect("Error reading row");
+        let row: CsvRow = result?;
         let rule: Rule = row.into();
 
         let guild_rules = rules.entry(rule.guild_id).or_insert(GuildRules::new());
@@ -175,12 +210,54 @@ pub fn load_rules() -> BTreeMap<u64, GuildRules> {
         }
     }
 
-    rules
+    Ok(rules)
+}
+
+pub fn save_rules_to_file(rules: &BTreeMap<u64, GuildRules>, file_path: String) -> Result<()> {
+    let file = File::create(file_path)?;
+    let mut wtr = csv::Writer::from_writer(file);
+
+    // Collect all rules from all guilds
+    let mut all_csv_rows: Vec<CsvRow> = rules
+        .values()
+        .flat_map(|guild_rules| Into::<Vec<CsvRow>>::into(guild_rules.clone()))
+        .collect();
+
+    // Sort by guild_id then by role_name for consistent output
+    all_csv_rows.sort_by(|a, b| match a.guild_id.cmp(&b.guild_id) {
+        std::cmp::Ordering::Equal => a.role_id.cmp(&b.role_id),
+        o => o,
+    });
+
+    // Write all rows
+    for row in all_csv_rows {
+        wtr.serialize(row)?;
+    }
+
+    wtr.flush()?;
+    Ok(())
+}
+
+pub fn save_db_to_file(rules: &BTreeMap<u64, GuildRules>) -> Result<()> {
+    save_rules_to_file(rules, "db.csv".to_string())
+}
+
+pub fn load_db_from_file() -> BTreeMap<u64, GuildRules> {
+    match load_rules_from_file("db.csv".to_string()) {
+        Ok(rules) => rules,
+        Err(_) => panic!(), // should load from github
+    }
 }
 
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+
+    #[test]
+    fn test_save_db_to_file() {
+        save_rules_to_file(&load_db_from_file(), "db_test.csv".to_string());
+    }
+
     #[test]
     fn test_rule_named_activity() {
         let row = CsvRow {
