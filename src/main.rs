@@ -95,6 +95,9 @@ async fn main() -> Result<()> {
     {
         tracing::error!(?error, "failed to register commands");
     }
+    // interaction_client
+    //     .set_global_commands(&[ManageCommand::create_command().into()])
+    //     .await?;
 
     let mut senders = Vec::with_capacity(shards.len());
     let mut tasks = Vec::with_capacity(shards.len());

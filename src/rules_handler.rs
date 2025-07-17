@@ -71,11 +71,11 @@ pub struct Rule {
 impl Into<EmbedField> for Rule {
     fn into(self) -> EmbedField {
         let activities: Vec<String> = self.activities.iter().map(|x| x.to_string()).collect();
-        let rule_value = if activities.is_empty() {
-            "Default Role".to_string()
-        } else {
-            activities.join(", ")
+        let rule_value = match self.role_type {
+            RoleType::NamedActivity => activities.join(", "),
+            RoleType::Else => "Default Role".to_string(),
         };
+
         EmbedField {
             inline: false,
             name: self.role_name,
