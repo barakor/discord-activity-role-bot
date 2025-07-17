@@ -151,7 +151,7 @@ impl GuildRules {
         }
     }
 
-    pub async fn add_rule(&mut self, rule: Rule) -> Result<()> {
+    pub fn add_rule(&mut self, rule: Rule) -> Result<()> {
         match rule.role_type {
             RoleType::NamedActivity => match self.activities_rules.contains_key(&rule.role_id) {
                 true => Err(anyhow::anyhow!("Rule already exists")),
@@ -170,7 +170,7 @@ impl GuildRules {
         }
     }
 
-    pub async fn remove_rule(&mut self, role_id: u64) -> Result<()> {
+    pub fn remove_rule(&mut self, role_id: u64) -> Result<()> {
         if self.activities_rules.contains_key(&role_id) {
             self.activities_rules.remove(&role_id);
             Ok(())
@@ -184,7 +184,7 @@ impl GuildRules {
         }
     }
 
-    pub async fn edit_rule(&mut self, rule: Rule) -> Result<()> {
+    pub fn edit_rule(&mut self, rule: Rule) -> Result<()> {
         if self.activities_rules.contains_key(&rule.role_id) {
             self.activities_rules.insert(rule.role_id, rule);
             Ok(())

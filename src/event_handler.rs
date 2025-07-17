@@ -131,9 +131,7 @@ impl Bot {
     ) -> anyhow::Result<()> {
         interaction_ack(&self.http_client, &interaction).await?;
         let response = match &*data.name {
-            "manage" => {
-                ManageCommand::handle(&interaction, data, &self.http_client, &self.rules).await
-            }
+            "manage" => ManageCommand::handle(&interaction, data, &self.cache, &self.rules).await,
             "storage" => {
                 StorageCommand::handle(data, &self.rules, self.github_config.as_ref()).await
             }

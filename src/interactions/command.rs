@@ -1,24 +1,22 @@
 use crate::{
     config_handler::GithubConfig,
-    rules_handler::{self, GuildRules, RoleType},
+    rules_handler::{self, GuildRules, RoleType, Rule},
 };
 use anyhow::{Context, Result};
-use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::RwLock;
-use twilight_http::Client;
-use twilight_interactions::command::{
-    CommandModel, CommandOption, CreateCommand, CreateOption, ResolvedUser,
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
 };
+use tokio::sync::RwLock;
+use twilight_cache_inmemory::InMemoryCache;
+use twilight_interactions::command::{CommandModel, CommandOption, CreateCommand, CreateOption};
 use twilight_model::{
     application::interaction::{Interaction, application_command::CommandData},
     channel::message::embed::EmbedField,
     guild::Role,
-    http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
+    http::interaction::InteractionResponseData,
 };
-use twilight_util::builder::{
-    InteractionResponseDataBuilder,
-    embed::{EmbedBuilder, EmbedFieldBuilder},
-};
+use twilight_util::builder::{InteractionResponseDataBuilder, embed::EmbedBuilder};
 
 #[derive(Debug, CommandOption, CreateOption)]
 pub enum StorageCommandOptions {
@@ -118,7 +116,7 @@ impl ManageCommand {
     pub async fn handle(
         interaction: &Interaction,
         data: CommandData,
-        client: &Client,
+        cache: &Arc<InMemoryCache>,
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     ) -> Result<Option<InteractionResponseData>> {
         // Parse the command data into a structure using twilight-interactions.
@@ -127,8 +125,8 @@ impl ManageCommand {
 
         // Call the appropriate subcommand.
         match command {
-            // ManageCommand::Add(command) => command.run(interaction, client, rules).await,
-            // ManageCommand::Remove(command) => command.run(interaction, client, rules).await,
+            ManageCommand::Add(command) => command.run(cache, interaction, rules).await,
+            ManageCommand::Remove(command) => command.run(interaction, rules).await,
             // ManageCommand::Edit(command) => command.run(interaction, client, rules).await,
             ManageCommand::List(command) => command.run(interaction, rules).await,
             _ => Ok(None),
@@ -149,11 +147,69 @@ pub struct AddRoleRule {
     pub comment: Option<String>,
 }
 
+impl AddRoleRule {
+    pub async fn run(
+        &self,
+        cache: &Arc<InMemoryCache>,
+        interaction: &Interaction,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    ) -> Result<Option<InteractionResponseData>> {
+        let guild_id = interaction.guild_id.ok_or(anyhow::anyhow!("No guild id"))?;
+
+        let mut rules_writer = rules.write().await;
+        rules_writer
+            .get_mut(&guild_id.into())
+            .ok_or(anyhow::anyhow!("No guild rules"))?
+            .add_rule(Rule {
+                guild_id: guild_id.into(),
+                guild_name: cache
+                    .guild(guild_id)
+                    .ok_or(anyhow::anyhow!("No guild"))?
+                    .name()
+                    .to_string(),
+                role_id: self.role_tag.id.get(),
+                role_name: self.role_tag.name.clone(),
+                role_type: self.role_type.clone(),
+                activities: BTreeSet::new(),
+                comments: self.comment.clone().unwrap_or("".to_string()),
+            })?;
+
+        Ok(Some(InteractionResponseData {
+            content: Some("Rule added".to_string()),
+            ..Default::default()
+        }))
+    }
+}
+
 #[derive(CommandModel, CreateCommand, Debug)]
 #[command(name = "remove", desc = "Remove Role Rule, Stops assigning the role")]
 pub struct RemoveRoleRule {
     #[command(desc = "Role Tag")]
     pub role_tag: Role,
+}
+
+impl RemoveRoleRule {
+    pub async fn run(
+        &self,
+        interaction: &Interaction,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    ) -> Result<Option<InteractionResponseData>> {
+        let guild_id = interaction
+            .guild_id
+            .ok_or(anyhow::anyhow!("No guild id"))?
+            .get();
+
+        let mut rules_writer = rules.write().await;
+        rules_writer
+            .get_mut(&guild_id)
+            .ok_or(anyhow::anyhow!("No guild rules"))?
+            .remove_rule(self.role_tag.id.get())?;
+
+        Ok(Some(InteractionResponseData {
+            content: Some("Rule removed".to_string()),
+            ..Default::default()
+        }))
+    }
 }
 
 #[derive(CommandModel, CreateCommand, Debug)]
