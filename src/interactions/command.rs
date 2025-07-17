@@ -221,13 +221,19 @@ impl StorageCommand {
                     github_config.ok_or(anyhow::anyhow!("No github config"))?,
                 )
                 .await?;
-                Ok(None)
+                Ok(Some(InteractionResponseData {
+                    content: Some("Rules saved to github".to_string()),
+                    ..Default::default()
+                }))
             }
             StorageCommandOptions::LoadFromFile => {
                 let mut rules_writer = rules.write().await;
                 let rules = rules_handler::load_db_from_file()?;
                 *rules_writer = rules;
-                Ok(None)
+                Ok(Some(InteractionResponseData {
+                    content: Some("Rules loaded from file".to_string()),
+                    ..Default::default()
+                }))
             }
             StorageCommandOptions::LoadFromGithub => {
                 let mut rules_writer = rules.write().await;
@@ -236,7 +242,10 @@ impl StorageCommand {
                 )
                 .await?;
                 *rules_writer = rules;
-                Ok(None)
+                Ok(Some(InteractionResponseData {
+                    content: Some("Rules loaded from github".to_string()),
+                    ..Default::default()
+                }))
             }
         }
     }
