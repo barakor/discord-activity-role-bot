@@ -6,14 +6,35 @@ use std::{
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use twilight_interactions::command::{CommandOption, CreateOption};
 use twilight_model::channel::message::embed::EmbedField;
 
-use crate::github_handler::{get_bytes_buffer_from_url, upload_bytes_to_github};
+use crate::{
+    config_handler::GithubConfig,
+    github_handler::{get_bytes_from_github, upload_bytes_to_github},
+};
 use bytes::Bytes;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static RULES_HANDLER_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Mark the rules handler as started or not.
+pub fn set_rules_handler_started(started: bool) {
+    RULES_HANDLER_STARTED.store(started, Ordering::SeqCst);
+}
+
+/// Check if the rules handler has been started.
+pub fn is_rules_handler_started() -> bool {
+    RULES_HANDLER_STARTED.load(Ordering::SeqCst)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, CommandOption, CreateOption)]
 pub enum RoleType {
+    #[option(name = "Activity Based Role", value = "named-activity")]
     NamedActivity,
+
+    #[option(name = "Otherwise Role", value = "else")]
     Else,
 }
 
@@ -63,7 +84,7 @@ impl Into<EmbedField> for Rule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GuildRules {
-    activities_rules: BTreeSet<Rule>,
+    activities_rules: BTreeMap<u64, Rule>,
     default_rule: Option<Rule>,
 }
 
@@ -71,7 +92,7 @@ impl GuildRules {
     pub fn new() -> Self {
         GuildRules {
             default_rule: None,
-            activities_rules: BTreeSet::new(),
+            activities_rules: BTreeMap::new(),
         }
     }
 
@@ -84,7 +105,7 @@ impl GuildRules {
 
     pub fn all_rules(&self) -> BTreeSet<Rule> {
         self.default_rules()
-            .union(&self.activities_rules)
+            .union(&self.activities_rules.values().cloned().collect())
             .cloned()
             .collect()
     }
@@ -96,7 +117,7 @@ impl GuildRules {
 
         let activity_rules: BTreeSet<Rule> = self
             .activities_rules
-            .iter()
+            .values()
             .filter(|rule| {
                 rule.activities.iter().any(|rule_activity| {
                     user_activities.iter().any(|user_activity| {
@@ -113,12 +134,61 @@ impl GuildRules {
             true => self.default_rules(),
         }
     }
+
+    pub fn get_rule(&self, role_id: u64) -> Option<&Rule> {
+        match &self.default_rule {
+            Some(rule) if rule.role_id == role_id => Some(rule),
+            _ => self.activities_rules.get(&role_id),
+        }
+    }
+
+    pub async fn add_rule(&mut self, rule: Rule) -> Result<()> {
+        match rule.role_type {
+            RoleType::NamedActivity => match self.activities_rules.contains_key(&rule.role_id) {
+                true => Err(anyhow::anyhow!("Rule already exists")),
+                false => {
+                    self.activities_rules.insert(rule.role_id, rule);
+                    Ok(())
+                }
+            },
+            RoleType::Else => match &self.default_rule {
+                Some(_) => Err(anyhow::anyhow!("Default rule already exists")),
+                None => {
+                    self.default_rule = Some(rule);
+                    Ok(())
+                }
+            },
+        }
+    }
+
+    pub async fn remove_rule(&mut self, role_id: u64) -> Result<()> {
+        if self.activities_rules.contains_key(&role_id) {
+            self.activities_rules.remove(&role_id);
+            Ok(())
+        } else if let Some(rule) = &self.default_rule
+            && rule.role_id == role_id
+        {
+            self.default_rule = None;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Rule not found"))
+        }
+    }
+
+    pub async fn edit_rule(&mut self, rule: Rule) -> Result<()> {
+        if self.activities_rules.contains_key(&rule.role_id) {
+            self.activities_rules.insert(rule.role_id, rule);
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Rule not found"))
+        }
+    }
 }
 
 impl Into<Vec<EmbedField>> for GuildRules {
     fn into(self) -> Vec<EmbedField> {
         self.activities_rules
-            .iter()
+            .values()
             .map(|r| r.clone().into())
             .chain(self.default_rule.iter().map(|r| r.clone().into()))
             .collect()
@@ -173,7 +243,7 @@ impl Into<Vec<CsvRow>> for GuildRules {
             Some(r) => vec![r.into()],
             None => vec![],
         };
-        rows.extend(self.activities_rules.iter().map(|r| r.clone().into()));
+        rows.extend(self.activities_rules.values().map(|r| r.clone().into()));
         rows
     }
 }
@@ -204,7 +274,7 @@ pub fn load_rules_from_buffer<R: Read>(reader: R) -> Result<BTreeMap<u64, GuildR
 
         match rule.role_type {
             RoleType::NamedActivity => {
-                guild_rules.activities_rules.insert(rule);
+                guild_rules.activities_rules.insert(rule.role_id, rule);
             }
             RoleType::Else => {
                 guild_rules.default_rule = Some(rule);
@@ -220,10 +290,18 @@ pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRule
     Ok(load_rules_from_buffer(BufReader::new(file))?)
 }
 
-pub async fn load_rules_from_github() -> Result<BTreeMap<u64, GuildRules>> {
-    let url = "https://raw.githubusercontent.com/barakor/discord-activity-role-bot/db-data/db.csv";
+pub async fn load_rules_from_github(
+    github_config: &GithubConfig,
+) -> Result<BTreeMap<u64, GuildRules>> {
     Ok(load_rules_from_buffer(
-        get_bytes_buffer_from_url(url).await?,
+        get_bytes_from_github(
+            &github_config.owner,
+            &github_config.repo,
+            "db.csv",
+            &github_config.branch,
+        )
+        .await?
+        .as_slice(),
     )?)
 }
 
@@ -263,24 +341,27 @@ pub fn save_db_to_file(rules: &BTreeMap<u64, GuildRules>) -> Result<()> {
 
 pub async fn save_db_to_github(
     rules: &BTreeMap<u64, GuildRules>,
-    owner: &str,
-    repo: &str,
-    branch: &str,
+    github_config: &GithubConfig,
 ) -> Result<()> {
     let csv_bytes = rules_to_csv_bytes(rules)?;
     let bytes = Bytes::from(csv_bytes);
 
-    upload_bytes_to_github(&bytes, owner, repo, "db.csv", branch).await
+    upload_bytes_to_github(
+        &bytes,
+        &github_config.owner,
+        &github_config.repo,
+        "db.csv",
+        &github_config.branch,
+    )
+    .await
 }
 
-pub async fn save_db_to_github_default(rules: &BTreeMap<u64, GuildRules>) -> Result<()> {
-    save_db_to_github(rules, "barakor", "discord-activity-role-bot", "db-data").await
-}
-
-pub async fn load_db() -> BTreeMap<u64, GuildRules> {
+pub async fn load_db(github_config: Option<&GithubConfig>) -> BTreeMap<u64, GuildRules> {
     if let Ok(db) = load_rules_from_file("db.csv".to_string()) {
         db
-    } else if let Ok(db) = load_rules_from_github().await {
+    } else if let Some(github_config) = github_config
+        && let Ok(db) = load_rules_from_github(github_config).await
+    {
         db
     } else {
         BTreeMap::new()
@@ -288,29 +369,24 @@ pub async fn load_db() -> BTreeMap<u64, GuildRules> {
 }
 
 mod tests {
+    use crate::{config_handler, github_handler};
+
     #[allow(unused_imports)]
     use super::*;
 
     #[tokio::test]
     async fn test_save_db_to_file() {
-        save_rules_to_file(&load_db().await, "db_test.csv".to_string());
+        save_rules_to_file(&load_db(None).await, "db_test.csv".to_string());
     }
 
     #[tokio::test]
     async fn test_save_db_equals() {
         assert_eq!(
             load_rules_from_file("db.csv".to_string()).unwrap(),
-            load_rules_from_github().await.unwrap()
+            load_rules_from_github(&GithubConfig::new().unwrap())
+                .await
+                .unwrap()
         )
-    }
-
-    #[tokio::test]
-    async fn test_save_db_to_github() {
-        let rules = load_db().await;
-        // This test will only work if GitHub token is configured
-        let _result =
-            save_db_to_github(&rules, "barakor", "discord-activity-role-bot", "db-data").await;
-        // We don't assert here since it depends on GitHub authentication
     }
 
     #[test]
@@ -387,14 +463,16 @@ mod tests {
         };
 
         let mut guild_rules = GuildRules::new();
-        guild_rules.activities_rules.insert(named_rule);
+        guild_rules
+            .activities_rules
+            .insert(named_rule.role_id, named_rule);
         guild_rules.default_rule = Some(else_rule);
 
         let user_activities = ["AGame1"].iter().map(|s| s.to_string()).collect();
 
         assert_eq!(
             guild_rules.matching_rules(user_activities),
-            guild_rules.activities_rules.iter().cloned().collect()
+            guild_rules.activities_rules.values().cloned().collect()
         );
 
         let user_activities = ["asd"].iter().map(|s| s.to_string()).collect();
@@ -403,5 +481,20 @@ mod tests {
             guild_rules.matching_rules(user_activities),
             guild_rules.default_rule.iter().cloned().collect()
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_octocrab_upload_file() {
+        config_handler::start();
+        let config = config_handler::EnvConfig::new().unwrap();
+        github_handler::start(&config.github_config.as_ref().unwrap().token)
+            .await
+            .unwrap();
+        save_db_to_github(
+            &load_db(config.github_config.as_ref()).await,
+            &config.github_config.as_ref().unwrap(),
+        )
+        .await
+        .unwrap();
     }
 }

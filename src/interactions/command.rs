@@ -1,31 +1,31 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, option, sync::Arc};
 
 use anyhow::Context;
 use tokio::sync::RwLock;
+use twilight_cache_inmemory::CacheableRole;
 use twilight_http::Client;
-use twilight_interactions::command::{CommandModel, CreateCommand, DescLocalizations};
+use twilight_interactions::command::{
+    CommandModel, CreateCommand, DescLocalizations, ResolvedUser,
+};
 use twilight_model::{
     application::interaction::{Interaction, application_command::CommandData},
-    channel::message::Embed,
+    channel::message::{Embed, embed::EmbedField},
+    guild::Role,
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::Id,
 };
 use twilight_util::builder::{
     InteractionResponseDataBuilder,
-    embed::{EmbedBuilder, ImageSource},
+    embed::{EmbedBuilder, EmbedFieldBuilder, ImageSource},
 };
 
-use crate::rules_handler::GuildRules;
+use crate::rules_handler::{GuildRules, RoleType};
 
 #[derive(CommandModel, CreateCommand, Debug)]
 #[command(name = "xkcd", desc_localizations = "xkcd_desc")]
 pub enum XkcdCommand {
-    #[command(name = "latest")]
-    Latest(XkcdLatestCommand),
     #[command(name = "number")]
     Number(XkcdNumberCommand),
-    #[command(name = "random")]
-    Random(XkcdRandomCommand),
 }
 
 fn xkcd_desc() -> DescLocalizations {
@@ -45,45 +45,8 @@ impl XkcdCommand {
 
         // Call the appropriate subcommand.
         match command {
-            XkcdCommand::Latest(command) => command.run(interaction, client).await,
             XkcdCommand::Number(command) => command.run(interaction, client).await,
-            XkcdCommand::Random(command) => command.run(interaction, client).await,
         }
-    }
-}
-
-#[derive(CommandModel, CreateCommand, Debug)]
-#[command(name = "latest", desc_localizations = "xkcd_latest_desc")]
-pub struct XkcdLatestCommand;
-
-fn xkcd_latest_desc() -> DescLocalizations {
-    DescLocalizations::new(
-        "Show the latest xkcd comic",
-        [("fr", "Afficher le dernier comic xkcd")],
-    )
-}
-
-impl XkcdLatestCommand {
-    /// Run the `/xkcd latest` command.
-    pub async fn run(&self, interaction: Interaction, client: &Client) -> anyhow::Result<()> {
-        let embed = crate_embed()?;
-
-        // Respond to the interaction with an embed.
-        let client = client.interaction(interaction.application_id);
-        let data = InteractionResponseDataBuilder::new()
-            .embeds([embed])
-            .build();
-
-        let response = InteractionResponse {
-            kind: InteractionResponseType::ChannelMessageWithSource,
-            data: Some(data),
-        };
-
-        client
-            .create_response(interaction.id, &interaction.token, &response)
-            .await?;
-
-        Ok(())
     }
 }
 
@@ -120,40 +83,6 @@ impl XkcdNumberCommand {
         let response = InteractionResponse {
             kind: InteractionResponseType::ChannelMessageWithSource,
             data: Some(data.build()),
-        };
-
-        client
-            .create_response(interaction.id, &interaction.token, &response)
-            .await?;
-
-        Ok(())
-    }
-}
-
-#[derive(CommandModel, CreateCommand, Debug)]
-#[command(name = "random", desc_localizations = "xkcd_random_desc")]
-pub struct XkcdRandomCommand;
-
-fn xkcd_random_desc() -> DescLocalizations {
-    DescLocalizations::new(
-        "Show a random xkcd comic",
-        [("fr", "Afficher un comic xkcd aléatoire")],
-    )
-}
-
-impl XkcdRandomCommand {
-    /// Run the `/xkcd random` command.
-    pub async fn run(&self, interaction: Interaction, client: &Client) -> anyhow::Result<()> {
-        let embed = crate_embed()?;
-
-        let client = client.interaction(interaction.application_id);
-        let data = InteractionResponseDataBuilder::new()
-            .embeds([embed])
-            .build();
-
-        let response = InteractionResponse {
-            kind: InteractionResponseType::ChannelMessageWithSource,
-            data: Some(data),
         };
 
         client
@@ -220,6 +149,207 @@ impl GuildRulesList {
             .build();
 
         embed.fields = fields;
+
+        let client = client.interaction(interaction.application_id);
+        let data = InteractionResponseDataBuilder::new()
+            .embeds([embed])
+            .build();
+
+        let response = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(data),
+        };
+
+        client
+            .create_response(interaction.id, &interaction.token, &response)
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(name = "manage", desc = "Manage Guild Roles Rules")]
+pub enum ManageCommand {
+    #[command(name = "add")]
+    Add(AddRoleRule),
+
+    #[command(name = "remove")]
+    Remove(RemoveRoleRule),
+
+    #[command(name = "edit")]
+    Edit(EditRoleRule),
+
+    #[command(name = "list")]
+    List(ListRoleRule),
+}
+
+impl ManageCommand {
+    /// Handle incoming `/xkcd` commands.
+    pub async fn handle(
+        interaction: Interaction,
+        data: CommandData,
+        client: &Client,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    ) -> anyhow::Result<()> {
+        // Parse the command data into a structure using twilight-interactions.
+        let command =
+            ManageCommand::from_interaction(data.into()).context("failed to parse command data")?;
+
+        // Call the appropriate subcommand.
+        match command {
+            // ManageCommand::Add(command) => command.run(interaction, client, rules).await,
+            // ManageCommand::Remove(command) => command.run(interaction, client, rules).await,
+            // ManageCommand::Edit(command) => command.run(interaction, client, rules).await,
+            ManageCommand::List(command) => command.run(interaction, client, rules).await,
+            _ => Ok(()),
+        }
+    }
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(name = "add", desc = "Add Role Rule")]
+pub struct AddRoleRule {
+    #[command(desc = "Role Tag")]
+    pub role_tag: Role,
+
+    #[command(desc = "Type")]
+    pub role_type: RoleType,
+
+    #[command(desc = "Comment")]
+    pub comment: Option<String>,
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(name = "remove", desc = "Remove Role Rule, Stops assigning the role")]
+pub struct RemoveRoleRule {
+    #[command(desc = "Role Tag")]
+    pub role_tag: Role,
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(name = "edit", desc = "Edit Role Rule")]
+pub struct EditRoleRule {
+    #[command(desc = "Role Tag")]
+    pub role_tag: Role,
+
+    #[command(desc = "Add Activities, `;` seperated")]
+    pub add_activities: Option<String>,
+
+    #[command(desc = "Remove Activities, `;` seperated")]
+    pub remove_activities: Option<String>,
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(
+    name = "list",
+    desc = "Shows Role Rule, if no role tag is provided, shows all rules"
+)]
+pub struct ListRoleRule {
+    #[command(desc = "Role Tag")]
+    pub role_tag: Option<Role>,
+}
+
+impl ListRoleRule {
+    pub async fn run(
+        &self,
+        interaction: Interaction,
+        client: &Client,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    ) -> anyhow::Result<()> {
+        let guild_id = interaction
+            .guild_id
+            .ok_or(anyhow::anyhow!("No guild id"))?
+            .get();
+
+        let embed_fields: Vec<EmbedField> = match &self.role_tag {
+            Some(role_tag) => {
+                let role_id = role_tag.id.get();
+                let rules_reader = rules.read().await;
+                let rule = rules_reader
+                    .get(&guild_id)
+                    .ok_or(anyhow::anyhow!("No guild rules"))?
+                    .get_rule(role_id)
+                    .ok_or(anyhow::anyhow!("No rule found"))?;
+                vec![rule.clone().into()]
+            }
+            None => rules
+                .read()
+                .await
+                .get(&guild_id)
+                .ok_or(anyhow::anyhow!("No guild rules"))?
+                .clone()
+                .into(),
+        };
+
+        let title = format!("Guild Rules");
+
+        let mut embed = EmbedBuilder::new()
+            .color(0x2f3136) // Dark theme color, render a "transparent" background
+            .title(title)
+            .build();
+
+        embed.fields = embed_fields;
+
+        let client = client.interaction(interaction.application_id);
+        let data = InteractionResponseDataBuilder::new()
+            .embeds([embed])
+            .build();
+
+        let response = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(data),
+        };
+
+        client
+            .create_response(interaction.id, &interaction.token, &response)
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(name = "test-command", desc = "Test Command")]
+pub struct TestCommand {
+    #[command(desc = "Test User Option")]
+    pub test_user: ResolvedUser,
+
+    #[command(desc = "Test Role Option")]
+    pub test_role: Role,
+}
+
+impl TestCommand {
+    pub async fn handle(
+        interaction: Interaction,
+        data: CommandData,
+        client: &Client,
+    ) -> anyhow::Result<()> {
+        // Call the appropriate subcommand.
+        let command =
+            TestCommand::from_interaction(data.into()).context("failed to parse command data")?;
+
+        // Call the appropriate subcommand.
+        match command {
+            command => command.run(interaction, client).await,
+        }
+    }
+
+    pub async fn run(&self, interaction: Interaction, client: &Client) -> anyhow::Result<()> {
+        let title = format!("test Command");
+
+        let mut embed = EmbedBuilder::new()
+            .color(0x2f3136) // Dark theme color, render a "transparent" background
+            .title(title)
+            .field(EmbedFieldBuilder::new(
+                "test_user",
+                self.test_user.resolved.name.clone(),
+            ))
+            .field(EmbedFieldBuilder::new(
+                "test_role",
+                self.test_role.name.clone(),
+            ))
+            .build();
 
         let client = client.interaction(interaction.application_id);
         let data = InteractionResponseDataBuilder::new()

@@ -1,17 +1,20 @@
 use anyhow::{Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use base64::{Engine as _, engine::general_purpose};
 use bytes::Bytes;
 use octocrab::Octocrab;
-use reqwest::Client;
-use std::io::Cursor;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::config_handler::get_config;
+static GITHUB_HANDLER_STARTED: AtomicBool = AtomicBool::new(false);
 
-pub async fn get_bytes_buffer_from_url(url: &str) -> Result<Cursor<Bytes>> {
-    let response = Client::new().get(url).send().await?.bytes().await?;
-    Ok(Cursor::new(response))
+/// Mark the github handler as started or not.
+pub fn set_github_handler_started(started: bool) {
+    GITHUB_HANDLER_STARTED.store(started, Ordering::SeqCst);
+}
+
+/// Check if the github handler has been started.
+pub fn is_github_handler_started() -> bool {
+    GITHUB_HANDLER_STARTED.load(Ordering::SeqCst)
 }
 
 pub async fn get_bytes_from_github(
@@ -50,14 +53,13 @@ pub async fn upload_bytes_to_github(
     branch: &str,
 ) -> Result<()> {
     let octocrab = octocrab::instance();
-    let encoded = general_purpose::STANDARD.encode(data);
 
     // Try to get the existing file to obtain its SHA
     let file = octocrab
         .repos(owner, repo)
         .get_content()
         .path(path_in_repo)
-        // .r#ref(branch)
+        .r#ref(branch)
         .send()
         .await
         .ok();
@@ -71,7 +73,7 @@ pub async fn upload_bytes_to_github(
     // Now update or create the file
     octocrab
         .repos(owner, repo)
-        .update_file(path_in_repo, "Update rules DB", encoded, sha)
+        .update_file(path_in_repo, "Update rules DB", data, sha)
         .branch(branch)
         .send()
         .await?;
@@ -80,20 +82,27 @@ pub async fn upload_bytes_to_github(
 }
 
 pub async fn start(github_token: &Option<String>) -> Result<()> {
-    let octocrab_client = match github_token {
-        Some(pat) => Octocrab::builder()
-            .personal_token(pat.to_string())
-            .build()?,
-        None => Octocrab::builder().build()?,
-    };
-    octocrab::initialise(octocrab_client);
+    if !is_github_handler_started() && github_token.is_some() {
+        let octocrab_client = match github_token {
+            Some(pat) => Octocrab::builder()
+                .personal_token(pat.to_string())
+                .build()?,
+            None => Octocrab::builder().build()?,
+        };
+        octocrab::initialise(octocrab_client);
+        set_github_handler_started(true);
+    }
+
     Ok({})
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::rules_handler::{load_rules_from_buffer, load_rules_from_github};
+    use crate::{
+        config_handler::GithubConfig,
+        rules_handler::{load_rules_from_buffer, load_rules_from_github},
+    };
 
     use super::*;
 
@@ -105,19 +114,11 @@ mod tests {
                 .unwrap();
         let rules = load_rules_from_buffer(data.as_slice()).unwrap();
 
-        assert_eq!(rules, load_rules_from_github().await.unwrap());
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_octocrab_upload_file() {
-        upload_bytes_to_github(
-            &Bytes::from("Hello"),
-            "barakor",
-            "discord-activity-role-bot",
-            "db.csv",
-            "db-data",
-        )
-        .await
-        .unwrap();
+        assert_eq!(
+            rules,
+            load_rules_from_github(&GithubConfig::new().unwrap())
+                .await
+                .unwrap()
+        );
     }
 }

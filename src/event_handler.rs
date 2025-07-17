@@ -1,7 +1,8 @@
 use crate::{
+    config_handler::GithubConfig,
     discord_utils::purge_guild_roles,
     events::{easter, handle_presence_update, user_activities_from_presence},
-    interactions::command::{GuildRulesList, XkcdCommand},
+    interactions::command::{GuildRulesList, ManageCommand, TestCommand, XkcdCommand},
     rules_handler::{GuildRules, load_db, load_rules_from_file},
 };
 use anyhow::{Result, bail};
@@ -40,23 +41,25 @@ pub struct Bot {
     pub cache: Arc<InMemoryCache>,
     pub presence_update_tasks:
         Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), JoinHandle<()>>>>,
+    pub github_config: Option<GithubConfig>,
 }
 
 impl Bot {
-    pub async fn new(http_client: Arc<Client>) -> Self {
+    pub async fn new(http_client: Arc<Client>, github_config: Option<GithubConfig>) -> Self {
         let cache = Arc::new(
             InMemoryCache::builder()
                 .resource_types(ResourceType::all())
                 .build(),
         );
         let presence_update_tasks = Arc::new(Mutex::new(HashMap::new()));
-        let rules = Arc::new(RwLock::new(load_db().await));
+        let rules = Arc::new(RwLock::new(load_db(github_config.as_ref()).await));
 
         Self {
             http_client,
             rules,
             cache,
             presence_update_tasks,
+            github_config: github_config,
         }
     }
 
@@ -104,7 +107,7 @@ impl Bot {
                     Some(InteractionData::ApplicationCommand(data)) => *data,
                     _ => {
                         tracing::warn!("ignoring non-command interaction");
-                        return Err(anyhow::format_err!("asd"));
+                        return Err(anyhow::format_err!("ignoring non-command interaction"));
                     }
                 };
                 let _ = self.handle_command(interaction, data).await;
@@ -124,6 +127,10 @@ impl Bot {
             "xkcd" => XkcdCommand::handle(interaction, data, &self.http_client).await,
             "list-guild-rules" => {
                 GuildRulesList::handle(interaction, data, &self.http_client, &self.rules).await
+            }
+            "test-command" => TestCommand::handle(interaction, data, &self.http_client).await,
+            "manage" => {
+                ManageCommand::handle(interaction, data, &self.http_client, &self.rules).await
             }
             name => bail!("unknown command: {}", name),
         }

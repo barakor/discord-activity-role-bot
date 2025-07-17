@@ -7,7 +7,6 @@ mod interactions;
 mod rules_handler;
 
 use anyhow::Result;
-use config_handler::get_config;
 use event_handler::runner;
 use std::sync::{Arc, atomic::Ordering};
 use tokio::signal;
@@ -25,11 +24,27 @@ use twilight_model::{
 use crate::{
     config_handler::EnvConfig,
     event_handler::{Bot, SHUTDOWN},
-    interactions::command::{GuildRulesList, XkcdCommand},
+    interactions::command::{GuildRulesList, ManageCommand, TestCommand, XkcdCommand},
 };
 
-async fn boot_shards(config: EnvConfig) -> Result<(Client, Vec<Shard>)> {
-    let token = config.discord_token;
+pub async fn start() -> Result<EnvConfig> {
+    config_handler::start()?;
+    let config = EnvConfig::new()?;
+
+    let _ = github_handler::start(
+        &config
+            .github_config
+            .as_ref()
+            .ok_or(anyhow::anyhow!("No GitHub config"))?
+            .token,
+    )
+    .await;
+
+    Ok(config)
+}
+
+async fn boot_shards(config: &EnvConfig) -> Result<(Client, Vec<Shard>)> {
+    let token = config.discord_token.clone();
     // Initialize the tracing subscriber.
 
     let intents = Intents::GUILD_PRESENCES | Intents::GUILDS | Intents::GUILD_MEMBERS;
@@ -54,16 +69,17 @@ async fn main() -> Result<()> {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let config = get_config()?;
+    let config = start().await?;
 
-    github_handler::start(&config.github_token).await?;
-    let (client, shards) = boot_shards(config).await?;
+    let (client, shards) = boot_shards(&config).await?;
 
     // Register global commands.
     let guild_id: Id<GuildMarker> = Id::new(1104894380080365710);
     let commands = [
         XkcdCommand::create_command().into(),
         GuildRulesList::create_command().into(),
+        TestCommand::create_command().into(),
+        ManageCommand::create_command().into(),
     ];
     let application = client
         .current_user_application()
@@ -87,7 +103,7 @@ async fn main() -> Result<()> {
     let mut tasks = Vec::with_capacity(shards.len());
 
     tracing::debug!("Spawned Shards: {}", &shards.len());
-    let bot = Arc::new(Bot::new(Arc::new(client)).await);
+    let bot = Arc::new(Bot::new(Arc::new(client), config.github_config).await);
 
     for shard in shards {
         senders.push(shard.sender());
@@ -133,7 +149,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn start_2nd_bot_with_activity() {
         let config = get_testing_config().unwrap();
-        let (_, shards) = boot_shards(config).await.unwrap();
+        let (_, shards) = boot_shards(&config).await.unwrap();
 
         let mut senders = Vec::with_capacity(shards.len());
         let mut tasks = Vec::with_capacity(shards.len());
