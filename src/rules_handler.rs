@@ -2,12 +2,18 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{BufReader, Read},
+    sync::Arc,
 };
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use twilight_interactions::command::{CommandOption, CreateOption};
-use twilight_model::channel::message::embed::EmbedField;
+use twilight_model::{
+    channel::message::embed::EmbedField,
+    guild::Role,
+    id::{Id, marker::GuildMarker},
+};
 
 use crate::{
     config_handler::GithubConfig,
@@ -142,6 +148,13 @@ impl GuildRules {
         }
     }
 
+    pub fn get_rule_mut(&mut self, role_id: u64) -> Option<&mut Rule> {
+        match &mut self.default_rule {
+            Some(rule) if rule.role_id == role_id => Some(rule),
+            _ => self.activities_rules.get_mut(&role_id),
+        }
+    }
+
     pub async fn add_rule(&mut self, rule: Rule) -> Result<()> {
         match rule.role_type {
             RoleType::NamedActivity => match self.activities_rules.contains_key(&rule.role_id) {
@@ -262,6 +275,30 @@ struct CsvRow {
     comments: String,
 }
 
+pub async fn update_roles_names(
+    rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    guild_roles: Vec<Role>,
+    guild_id: u64,
+) -> Result<()> {
+    let mut wrtr = rules.write().await;
+    let guild_rules = wrtr
+        .get_mut(&guild_id)
+        .ok_or(anyhow::anyhow!("No rules for guild"))?;
+
+    guild_roles.iter().for_each(|guild_role| {
+        let role_id = guild_role.id.into();
+
+        // update rule's role name
+        let rule = guild_rules.get_rule_mut(role_id);
+        match rule {
+            Some(rule) => rule.role_name = guild_role.name.to_string(),
+            None => (),
+        }
+    });
+
+    Ok(())
+}
+
 pub fn load_rules_from_buffer<R: Read>(reader: R) -> Result<BTreeMap<u64, GuildRules>> {
     let mut reader_buffer = csv::Reader::from_reader(reader);
     let mut rules = BTreeMap::new();
@@ -288,6 +325,10 @@ pub fn load_rules_from_buffer<R: Read>(reader: R) -> Result<BTreeMap<u64, GuildR
 pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRules>> {
     let file = File::open(file_path)?;
     Ok(load_rules_from_buffer(BufReader::new(file))?)
+}
+
+pub fn load_db_from_file() -> Result<BTreeMap<u64, GuildRules>> {
+    load_rules_from_file("db.csv".to_string())
 }
 
 pub async fn load_rules_from_github(

@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use twilight_cache_inmemory::CacheableRole;
 use twilight_http::Client;
 use twilight_interactions::command::{
-    CommandModel, CreateCommand, DescLocalizations, ResolvedUser,
+    CommandModel, CommandOption, CreateCommand, CreateOption, DescLocalizations, ResolvedUser,
 };
 use twilight_model::{
     application::interaction::{Interaction, application_command::CommandData},
@@ -19,7 +19,10 @@ use twilight_util::builder::{
     embed::{EmbedBuilder, EmbedFieldBuilder, ImageSource},
 };
 
-use crate::rules_handler::{GuildRules, RoleType};
+use crate::{
+    config_handler::GithubConfig,
+    rules_handler::{self, GuildRules, RoleType},
+};
 
 #[derive(CommandModel, CreateCommand, Debug)]
 #[command(name = "xkcd", desc_localizations = "xkcd_desc")]
@@ -165,6 +168,66 @@ impl GuildRulesList {
             .await?;
 
         Ok(())
+    }
+}
+
+#[derive(CommandModel, CreateCommand, Debug)]
+#[command(name = "storage", desc = "Save/Load to Storage, BotFather only")]
+pub struct StorageCommand {
+    #[command(desc = "Storage Command")]
+    pub storage_command: StorageCommandOptions,
+}
+
+#[derive(Debug, CommandOption, CreateOption)]
+pub enum StorageCommandOptions {
+    #[option(name = "Save to File", value = "save-to-file")]
+    SaveToFile,
+
+    #[option(name = "Load from File", value = "load-from-file")]
+    LoadFromFile,
+
+    #[option(name = "Save to Github", value = "save-to-github")]
+    SaveToGithub,
+
+    #[option(name = "Load from Github", value = "load-from-github")]
+    LoadFromGithub,
+}
+
+impl StorageCommand {
+    pub async fn handle(
+        interaction: Interaction,
+        data: CommandData,
+        client: &Client,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+        github_config: &GithubConfig,
+    ) -> anyhow::Result<()> {
+        let command = StorageCommand::from_interaction(data.into())
+            .context("failed to parse command data")?;
+
+        match command.storage_command {
+            StorageCommandOptions::SaveToFile => {
+                let rules = rules.read().await;
+                rules_handler::save_db_to_file(&rules);
+                Ok(())
+            }
+            StorageCommandOptions::SaveToGithub => {
+                let rules = rules.read().await;
+                rules_handler::save_db_to_github(&rules, github_config).await?;
+                Ok(())
+            }
+            StorageCommandOptions::LoadFromFile => {
+                let mut rules_writer = rules.write().await;
+                let rules = rules_handler::load_db_from_file()?;
+                *rules_writer = rules;
+                Ok(())
+            }
+            StorageCommandOptions::LoadFromGithub => {
+                let mut rules_writer = rules.write().await;
+                let rules = rules_handler::load_rules_from_github(github_config).await?;
+                *rules_writer = rules;
+                Ok(())
+            }
+        }
     }
 }
 

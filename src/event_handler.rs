@@ -3,7 +3,7 @@ use crate::{
     discord_utils::purge_guild_roles,
     events::{easter, handle_presence_update, user_activities_from_presence},
     interactions::command::{GuildRulesList, ManageCommand, TestCommand, XkcdCommand},
-    rules_handler::{GuildRules, load_db, load_rules_from_file},
+    rules_handler::{GuildRules, load_db, load_rules_from_file, update_roles_names},
 };
 use anyhow::{Result, bail};
 use std::{
@@ -96,7 +96,12 @@ impl Bot {
                     tokio::spawn(easter(
                         self.http_client.clone(),
                         self.cache.clone(),
-                        guild_id,
+                        guild_id.clone(),
+                    ));
+                    tokio::spawn(update_roles_names(
+                        self.rules.clone(),
+                        guild_data.roles,
+                        guild_id.into(),
                     ));
                 }
                 GuildCreate::Unavailable(_) => (),
