@@ -1,8 +1,6 @@
-use std::{collections::BTreeMap, option, sync::Arc};
-
-use anyhow::Context;
+use anyhow::{Context, Result};
+use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::RwLock;
-use twilight_cache_inmemory::CacheableRole;
 use twilight_http::Client;
 use twilight_interactions::command::{
     CommandModel, CommandOption, CreateCommand, CreateOption, DescLocalizations, ResolvedUser,
@@ -11,7 +9,7 @@ use twilight_model::{
     application::interaction::{Interaction, application_command::CommandData},
     channel::message::{Embed, embed::EmbedField},
     guild::Role,
-    http::interaction::{InteractionResponse, InteractionResponseType},
+    http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
     id::Id,
 };
 use twilight_util::builder::{
@@ -38,10 +36,10 @@ fn xkcd_desc() -> DescLocalizations {
 impl XkcdCommand {
     /// Handle incoming `/xkcd` commands.
     pub async fn handle(
-        interaction: Interaction,
+        interaction: &Interaction,
         data: CommandData,
         client: &Client,
-    ) -> anyhow::Result<()> {
+    ) -> Result<Option<InteractionResponseData>> {
         // Parse the command data into a structure using twilight-interactions.
         let command =
             XkcdCommand::from_interaction(data.into()).context("failed to parse command data")?;
@@ -49,7 +47,9 @@ impl XkcdCommand {
         // Call the appropriate subcommand.
         match command {
             XkcdCommand::Number(command) => command.run(interaction, client).await,
-        }
+        };
+
+        Ok(None)
     }
 }
 
@@ -74,7 +74,7 @@ fn xkcd_number_arg_desc() -> DescLocalizations {
 
 impl XkcdNumberCommand {
     /// Run the `/xkcd number <num>` command.
-    pub async fn run(&self, interaction: Interaction, client: &Client) -> anyhow::Result<()> {
+    pub async fn run(&self, interaction: &Interaction, client: &Client) -> anyhow::Result<()> {
         let mut data = InteractionResponseDataBuilder::new();
         if self.number == 1 {
             data = data.embeds([crate_embed()?]);
@@ -117,18 +117,19 @@ pub struct GuildRulesList;
 
 impl GuildRulesList {
     pub async fn handle(
-        interaction: Interaction,
+        interaction: &Interaction,
         data: CommandData,
         client: &Client,
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<Option<InteractionResponseData>> {
         // Call the appropriate subcommand.
-        GuildRulesList.run(interaction, client, rules).await
+        GuildRulesList.run(interaction, client, rules).await?;
+        Ok(None)
     }
 
     pub async fn run(
         &self,
-        interaction: Interaction,
+        interaction: &Interaction,
         client: &Client,
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     ) -> anyhow::Result<()> {
@@ -153,7 +154,6 @@ impl GuildRulesList {
 
         embed.fields = fields;
 
-        let client = client.interaction(interaction.application_id);
         let data = InteractionResponseDataBuilder::new()
             .embeds([embed])
             .build();
@@ -164,6 +164,7 @@ impl GuildRulesList {
         };
 
         client
+            .interaction(interaction.application_id)
             .create_response(interaction.id, &interaction.token, &response)
             .await?;
 
@@ -195,12 +196,12 @@ pub enum StorageCommandOptions {
 
 impl StorageCommand {
     pub async fn handle(
-        interaction: Interaction,
+        interaction: &Interaction,
         data: CommandData,
         client: &Client,
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
-        github_config: &GithubConfig,
-    ) -> anyhow::Result<()> {
+        github_config: Option<&GithubConfig>,
+    ) -> Result<Option<InteractionResponseData>> {
         let command = StorageCommand::from_interaction(data.into())
             .context("failed to parse command data")?;
 
@@ -208,24 +209,34 @@ impl StorageCommand {
             StorageCommandOptions::SaveToFile => {
                 let rules = rules.read().await;
                 rules_handler::save_db_to_file(&rules);
-                Ok(())
+                Ok(Some(InteractionResponseData {
+                    content: Some("Rules saved to file".to_string()),
+                    ..Default::default()
+                }))
             }
             StorageCommandOptions::SaveToGithub => {
                 let rules = rules.read().await;
-                rules_handler::save_db_to_github(&rules, github_config).await?;
-                Ok(())
+                rules_handler::save_db_to_github(
+                    &rules,
+                    github_config.ok_or(anyhow::anyhow!("No github config"))?,
+                )
+                .await?;
+                Ok(None)
             }
             StorageCommandOptions::LoadFromFile => {
                 let mut rules_writer = rules.write().await;
                 let rules = rules_handler::load_db_from_file()?;
                 *rules_writer = rules;
-                Ok(())
+                Ok(None)
             }
             StorageCommandOptions::LoadFromGithub => {
                 let mut rules_writer = rules.write().await;
-                let rules = rules_handler::load_rules_from_github(github_config).await?;
+                let rules = rules_handler::load_rules_from_github(
+                    github_config.ok_or(anyhow::anyhow!("No github config"))?,
+                )
+                .await?;
                 *rules_writer = rules;
-                Ok(())
+                Ok(None)
             }
         }
     }
@@ -250,11 +261,11 @@ pub enum ManageCommand {
 impl ManageCommand {
     /// Handle incoming `/xkcd` commands.
     pub async fn handle(
-        interaction: Interaction,
+        interaction: &Interaction,
         data: CommandData,
         client: &Client,
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<Option<InteractionResponseData>> {
         // Parse the command data into a structure using twilight-interactions.
         let command =
             ManageCommand::from_interaction(data.into()).context("failed to parse command data")?;
@@ -266,7 +277,9 @@ impl ManageCommand {
             // ManageCommand::Edit(command) => command.run(interaction, client, rules).await,
             ManageCommand::List(command) => command.run(interaction, client, rules).await,
             _ => Ok(()),
-        }
+        };
+
+        Ok(None)
     }
 }
 
@@ -316,7 +329,7 @@ pub struct ListRoleRule {
 impl ListRoleRule {
     pub async fn run(
         &self,
-        interaction: Interaction,
+        interaction: &Interaction,
         client: &Client,
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     ) -> anyhow::Result<()> {
@@ -384,10 +397,10 @@ pub struct TestCommand {
 
 impl TestCommand {
     pub async fn handle(
-        interaction: Interaction,
+        interaction: &Interaction,
         data: CommandData,
         client: &Client,
-    ) -> anyhow::Result<()> {
+    ) -> Result<Option<InteractionResponseData>> {
         // Call the appropriate subcommand.
         let command =
             TestCommand::from_interaction(data.into()).context("failed to parse command data")?;
@@ -395,10 +408,12 @@ impl TestCommand {
         // Call the appropriate subcommand.
         match command {
             command => command.run(interaction, client).await,
-        }
+        };
+
+        Ok(None)
     }
 
-    pub async fn run(&self, interaction: Interaction, client: &Client) -> anyhow::Result<()> {
+    pub async fn run(&self, interaction: &Interaction, client: &Client) -> anyhow::Result<()> {
         let title = format!("test Command");
 
         let mut embed = EmbedBuilder::new()

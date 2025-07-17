@@ -1,8 +1,10 @@
 use crate::{
     config_handler::GithubConfig,
-    discord_utils::purge_guild_roles,
+    discord_utils::{interaction_ack, interaction_end, interaction_response, purge_guild_roles},
     events::{easter, handle_presence_update, user_activities_from_presence},
-    interactions::command::{GuildRulesList, ManageCommand, TestCommand, XkcdCommand},
+    interactions::command::{
+        GuildRulesList, ManageCommand, StorageCommand, TestCommand, XkcdCommand,
+    },
     rules_handler::{GuildRules, load_db, load_rules_from_file, update_roles_names},
 };
 use anyhow::{Result, bail};
@@ -25,11 +27,13 @@ use twilight_http::Client;
 use twilight_model::{
     application::interaction::{Interaction, InteractionData, application_command::CommandData},
     gateway::payload::incoming::GuildCreate,
+    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         Id,
         marker::{GuildMarker, UserMarker},
     },
 };
+use twilight_util::builder::InteractionResponseDataBuilder;
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(10);
@@ -128,16 +132,32 @@ impl Bot {
         interaction: Interaction,
         data: CommandData,
     ) -> anyhow::Result<()> {
-        match &*data.name {
-            "xkcd" => XkcdCommand::handle(interaction, data, &self.http_client).await,
+        interaction_ack(&self.http_client, &interaction).await?;
+        let response = match &*data.name {
+            "xkcd" => XkcdCommand::handle(&interaction, data, &self.http_client).await,
             "list-guild-rules" => {
-                GuildRulesList::handle(interaction, data, &self.http_client, &self.rules).await
+                GuildRulesList::handle(&interaction, data, &self.http_client, &self.rules).await
             }
-            "test-command" => TestCommand::handle(interaction, data, &self.http_client).await,
+            "test-command" => TestCommand::handle(&interaction, data, &self.http_client).await,
             "manage" => {
-                ManageCommand::handle(interaction, data, &self.http_client, &self.rules).await
+                ManageCommand::handle(&interaction, data, &self.http_client, &self.rules).await
+            }
+            "storage" => {
+                StorageCommand::handle(
+                    &interaction,
+                    data,
+                    &self.http_client,
+                    &self.rules,
+                    self.github_config.as_ref(),
+                )
+                .await
             }
             name => bail!("unknown command: {}", name),
+        }?;
+
+        match response {
+            Some(response) => interaction_response(&self.http_client, &interaction, response).await,
+            None => interaction_end(&self.http_client, &interaction).await,
         }
     }
 }

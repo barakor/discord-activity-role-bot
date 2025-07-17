@@ -24,7 +24,9 @@ use twilight_model::{
 use crate::{
     config_handler::EnvConfig,
     event_handler::{Bot, SHUTDOWN},
-    interactions::command::{GuildRulesList, ManageCommand, TestCommand, XkcdCommand},
+    interactions::command::{
+        GuildRulesList, ManageCommand, StorageCommand, TestCommand, XkcdCommand,
+    },
 };
 
 pub async fn start() -> Result<EnvConfig> {
@@ -80,6 +82,7 @@ async fn main() -> Result<()> {
         GuildRulesList::create_command().into(),
         TestCommand::create_command().into(),
         ManageCommand::create_command().into(),
+        StorageCommand::create_command().into(),
     ];
     let application = client
         .current_user_application()
