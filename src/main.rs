@@ -6,6 +6,11 @@ mod github_handler;
 mod interactions;
 mod rules_handler;
 
+use crate::{
+    config_handler::EnvConfig,
+    event_handler::{Bot, SHUTDOWN},
+    interactions::command::{ManageCommand, StorageCommand},
+};
 use anyhow::Result;
 use event_handler::runner;
 use std::sync::{Arc, atomic::Ordering};
@@ -19,14 +24,6 @@ use twilight_model::{
         presence::{ActivityType, MinimalActivity, Status},
     },
     id::{Id, marker::GuildMarker},
-};
-
-use crate::{
-    config_handler::EnvConfig,
-    event_handler::{Bot, SHUTDOWN},
-    interactions::command::{
-        GuildRulesList, ManageCommand, StorageCommand, TestCommand, XkcdCommand,
-    },
 };
 
 pub async fn start() -> Result<EnvConfig> {
@@ -78,9 +75,6 @@ async fn main() -> Result<()> {
     // Register global commands.
     let guild_id: Id<GuildMarker> = Id::new(1104894380080365710);
     let commands = [
-        XkcdCommand::create_command().into(),
-        GuildRulesList::create_command().into(),
-        TestCommand::create_command().into(),
         ManageCommand::create_command().into(),
         StorageCommand::create_command().into(),
     ];

@@ -9,11 +9,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use twilight_interactions::command::{CommandOption, CreateOption};
-use twilight_model::{
-    channel::message::embed::EmbedField,
-    guild::Role,
-    id::{Id, marker::GuildMarker},
-};
+use twilight_model::{channel::message::embed::EmbedField, guild::Role};
 
 use crate::{
     config_handler::GithubConfig,

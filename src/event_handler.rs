@@ -2,10 +2,8 @@ use crate::{
     config_handler::GithubConfig,
     discord_utils::{interaction_ack, interaction_end, interaction_response, purge_guild_roles},
     events::{easter, handle_presence_update, user_activities_from_presence},
-    interactions::command::{
-        GuildRulesList, ManageCommand, StorageCommand, TestCommand, XkcdCommand,
-    },
-    rules_handler::{GuildRules, load_db, load_rules_from_file, update_roles_names},
+    interactions::command::{ManageCommand, StorageCommand},
+    rules_handler::{GuildRules, load_db, update_roles_names},
 };
 use anyhow::{Result, bail};
 use std::{
@@ -27,7 +25,6 @@ use twilight_http::Client;
 use twilight_model::{
     application::interaction::{Interaction, InteractionData, application_command::CommandData},
     gateway::payload::incoming::GuildCreate,
-    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         Id,
         marker::{GuildMarker, UserMarker},
@@ -134,30 +131,27 @@ impl Bot {
     ) -> anyhow::Result<()> {
         interaction_ack(&self.http_client, &interaction).await?;
         let response = match &*data.name {
-            "xkcd" => XkcdCommand::handle(&interaction, data, &self.http_client).await,
-            "list-guild-rules" => {
-                GuildRulesList::handle(&interaction, data, &self.http_client, &self.rules).await
-            }
-            "test-command" => TestCommand::handle(&interaction, data, &self.http_client).await,
             "manage" => {
                 ManageCommand::handle(&interaction, data, &self.http_client, &self.rules).await
             }
             "storage" => {
-                StorageCommand::handle(
-                    &interaction,
-                    data,
-                    &self.http_client,
-                    &self.rules,
-                    self.github_config.as_ref(),
-                )
-                .await
+                StorageCommand::handle(data, &self.rules, self.github_config.as_ref()).await
             }
             name => bail!("unknown command: {}", name),
-        }?;
+        };
 
         match response {
-            Some(response) => interaction_response(&self.http_client, &interaction, response).await,
-            None => interaction_end(&self.http_client, &interaction).await,
+            Ok(Some(response)) => {
+                interaction_response(&self.http_client, &interaction, response).await
+            }
+            Ok(None) => interaction_end(&self.http_client, &interaction).await,
+            Err(e) => {
+                tracing::error!(?e, "error handling command");
+                let error_response = InteractionResponseDataBuilder::new()
+                    .content(format!("Error: {}", e))
+                    .build();
+                interaction_response(&self.http_client, &interaction, error_response).await
+            }
         }
     }
 }
