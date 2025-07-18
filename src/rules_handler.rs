@@ -1,3 +1,10 @@
+use crate::{
+    config_handler::GithubConfig,
+    github_handler::{get_bytes_from_github, upload_bytes_to_github},
+};
+use anyhow::Result;
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -6,32 +13,23 @@ use std::{
     io::{BufReader, Read},
     sync::Arc,
 };
-
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use twilight_interactions::command::{CommandOption, CreateOption};
 use twilight_model::{channel::message::embed::EmbedField, guild::Role};
 
-use crate::{
-    config_handler::GithubConfig,
-    github_handler::{get_bytes_from_github, upload_bytes_to_github},
-};
-use bytes::Bytes;
+// use std::sync::atomic::{AtomicBool, Ordering};
 
-use std::sync::atomic::{AtomicBool, Ordering};
+// static RULES_HANDLER_STARTED: AtomicBool = AtomicBool::new(false);
 
-static RULES_HANDLER_STARTED: AtomicBool = AtomicBool::new(false);
+// /// Mark the rules handler as started or not.
+// pub fn set_rules_handler_started(started: bool) {
+//     RULES_HANDLER_STARTED.store(started, Ordering::SeqCst);
+// }
 
-/// Mark the rules handler as started or not.
-pub fn set_rules_handler_started(started: bool) {
-    RULES_HANDLER_STARTED.store(started, Ordering::SeqCst);
-}
-
-/// Check if the rules handler has been started.
-pub fn is_rules_handler_started() -> bool {
-    RULES_HANDLER_STARTED.load(Ordering::SeqCst)
-}
+// /// Check if the rules handler has been started.
+// pub fn is_rules_handler_started() -> bool {
+//     RULES_HANDLER_STARTED.load(Ordering::SeqCst)
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RoleErrors {
@@ -209,6 +207,7 @@ impl GuildRules {
         }
     }
 
+    #[allow(dead_code)]
     pub fn edit_rule(&mut self, rule: Rule) -> Result<()> {
         if self.activities_rules.contains_key(&rule.role_id) {
             self.activities_rules.insert(rule.role_id, rule);
@@ -459,6 +458,7 @@ pub async fn load_db(github_config: Option<&GithubConfig>) -> BTreeMap<u64, Guil
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::{config_handler, github_handler};
 
@@ -467,7 +467,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_db_to_file() {
-        save_rules_to_file(&load_db(None).await, "db_test.csv".to_string());
+        let _ = save_rules_to_file(&load_db(None).await, "db_test.csv".to_string());
     }
 
     #[tokio::test]
@@ -576,7 +576,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_octocrab_upload_file() {
-        config_handler::start();
+        let _ = config_handler::start();
         let config = config_handler::EnvConfig::new().unwrap();
         github_handler::start(&config.github_config.as_ref().unwrap().token)
             .await

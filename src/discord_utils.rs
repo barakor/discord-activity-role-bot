@@ -99,11 +99,6 @@ pub async fn interaction_response(
     interaction: &Interaction,
     response: InteractionResponseData,
 ) -> Result<()> {
-    // let response = InteractionResponse {
-    //     kind: InteractionResponseType::ChannelMessageWithSource,
-    //     data: Some(response),
-    // };
-
     client
         .interaction(interaction.application_id)
         .update_response(&interaction.token)

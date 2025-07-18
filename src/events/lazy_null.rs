@@ -1,19 +1,12 @@
 use anyhow::Result;
 use std::sync::Arc;
-use twilight_cache_inmemory::{CacheableRole, InMemoryCache};
+use twilight_cache_inmemory::CacheableRole;
 use twilight_http::{Client, request::AuditLogReason};
-use twilight_model::{
-    http,
-    id::{Id, marker::GuildMarker},
-};
+use twilight_model::id::{Id, marker::GuildMarker};
 
 pub const LEZYES_ID: u64 = 88533822521507840;
 
-pub async fn easter(
-    http_client: Arc<Client>,
-    cache: Arc<InMemoryCache>,
-    guild_id: Id<GuildMarker>,
-) -> Result<()> {
+pub async fn easter(http_client: Arc<Client>, guild_id: Id<GuildMarker>) -> Result<()> {
     let role_name = "Lazy Null".to_string();
     let reason = "Heil the king of nothing and master of null".to_string();
     let role_color = 15877376;

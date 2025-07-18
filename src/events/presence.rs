@@ -1,5 +1,4 @@
 use crate::{event_handler::DEBOUNCE_DELAY, rules_handler::GuildRules};
-use anyhow::{Result, anyhow};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
@@ -13,7 +12,6 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client;
 use twilight_model::{
     gateway::presence::{Activity, ActivityType},
-    guild,
     id::{
         Id,
         marker::{GuildMarker, RoleMarker, UserMarker},

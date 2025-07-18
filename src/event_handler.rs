@@ -94,11 +94,7 @@ impl Bot {
                         self.presence_update_tasks.clone(),
                         guild_id.clone(),
                     ));
-                    tokio::spawn(easter(
-                        self.http_client.clone(),
-                        self.cache.clone(),
-                        guild_id.clone(),
-                    ));
+                    tokio::spawn(easter(self.http_client.clone(), guild_id.clone()));
                     tokio::spawn(update_roles_names(
                         self.rules.clone(),
                         guild_data.roles,
