@@ -129,7 +129,6 @@ impl ManageCommand {
             ManageCommand::Remove(command) => command.run(interaction, rules).await,
             ManageCommand::Edit(command) => command.run(interaction, rules).await,
             ManageCommand::List(command) => command.run(interaction, rules).await,
-            _ => Ok(None),
         }
     }
 }
