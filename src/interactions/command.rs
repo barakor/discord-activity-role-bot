@@ -154,29 +154,27 @@ impl AddRoleRule {
         rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     ) -> Result<Option<InteractionResponseData>> {
         let guild_id = interaction.guild_id.ok_or(anyhow::anyhow!("No guild id"))?;
-
+        let new_rule = Rule {
+            guild_id: guild_id.into(),
+            guild_name: cache
+                .guild(guild_id)
+                .ok_or(anyhow::anyhow!("No guild"))?
+                .name()
+                .to_string(),
+            role_id: self.role_tag.id.get(),
+            role_name: self.role_tag.name.clone(),
+            role_type: self.role_type.clone(),
+            activities: BTreeSet::new(),
+            comments: self.comment.clone().unwrap_or("".to_string()),
+        };
         let mut rules_writer = rules.write().await;
         rules_writer
             .get_mut(&guild_id.into())
             .ok_or(anyhow::anyhow!("No guild rules"))?
-            .add_rule(Rule {
-                guild_id: guild_id.into(),
-                guild_name: cache
-                    .guild(guild_id)
-                    .ok_or(anyhow::anyhow!("No guild"))?
-                    .name()
-                    .to_string(),
-                role_id: self.role_tag.id.get(),
-                role_name: self.role_tag.name.clone(),
-                role_type: self.role_type.clone(),
-                activities: BTreeSet::new(),
-                comments: self.comment.clone().unwrap_or("".to_string()),
-            })?;
+            .add_rule(new_rule.clone())?;
+        tokio::spawn(rules_handler::save_current_db_to_file(rules.clone()));
 
-        Ok(Some(InteractionResponseData {
-            content: Some("Rule added".to_string()),
-            ..Default::default()
-        }))
+        Ok(Some(rule_to_interaction_response_data(new_rule)))
     }
 }
 
@@ -203,6 +201,8 @@ impl RemoveRoleRule {
             .get_mut(&guild_id)
             .ok_or(anyhow::anyhow!("No guild rules"))?
             .remove_rule(self.role_tag.id.get())?;
+
+        tokio::spawn(rules_handler::save_current_db_to_file(rules.clone()));
 
         Ok(Some(InteractionResponseData {
             content: Some("Rule removed".to_string()),
@@ -260,6 +260,8 @@ impl EditRoleRule {
             self.comment.clone().unwrap_or("".to_string()),
         )
         .await?;
+
+        tokio::spawn(rules_handler::save_current_db_to_file(rules.clone()));
 
         Ok(Some(rule_to_interaction_response_data(role_rule)))
     }
