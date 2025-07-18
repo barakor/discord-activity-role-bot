@@ -1,11 +1,11 @@
 name: sync_db
 
-on:
-  push:
-    branches:
-      - db-data
-    paths:
-      - db.csv
+# on:
+#   push:
+#     branches:
+#       - db-data
+#     paths:
+#       - db.csv
 
 jobs:
   sync_file:
