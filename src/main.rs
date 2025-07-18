@@ -72,12 +72,6 @@ async fn main() -> Result<()> {
 
     let (client, shards) = boot_shards(&config).await?;
 
-    // Register global commands.
-    let guild_id: Id<GuildMarker> = Id::new(1104894380080365710);
-    let commands = [
-        ManageCommand::create_command().into(),
-        StorageCommand::create_command().into(),
-    ];
     let application = client
         .current_user_application()
         .await
@@ -85,19 +79,22 @@ async fn main() -> Result<()> {
         .model()
         .await
         .unwrap();
+    tracing::info!("logged as {} with ID {}", application.name, application.id);
     let interaction_client = client.interaction(application.id);
 
-    tracing::info!("logged as {} with ID {}", application.name, application.id);
+    interaction_client
+        .set_guild_commands(
+            Id::new(1104894380080365710),
+            &[
+                ManageCommand::create_command().into(),
+                StorageCommand::create_command().into(),
+            ],
+        )
+        .await?;
 
-    if let Err(error) = interaction_client
-        .set_guild_commands(guild_id, &commands)
-        .await
-    {
-        tracing::error!(?error, "failed to register commands");
-    }
-    // interaction_client
-    //     .set_global_commands(&[ManageCommand::create_command().into()])
-    //     .await?;
+    interaction_client
+        .set_global_commands(&[ManageCommand::create_command().into()])
+        .await?;
 
     let mut senders = Vec::with_capacity(shards.len());
     let mut tasks = Vec::with_capacity(shards.len());

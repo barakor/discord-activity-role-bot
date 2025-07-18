@@ -18,6 +18,10 @@ use twilight_model::{
 };
 use twilight_util::builder::{InteractionResponseDataBuilder, embed::EmbedBuilder};
 
+fn guild_roles_manager_permissions() -> Permissions {
+    Permissions::MANAGE_ROLES
+}
+
 #[derive(Debug, CommandOption, CreateOption)]
 pub enum StorageCommandOptions {
     #[option(name = "Save to File", value = "save-to-file")]
@@ -32,9 +36,14 @@ pub enum StorageCommandOptions {
     #[option(name = "Load from Github", value = "load-from-github")]
     LoadFromGithub,
 }
+use twilight_model::guild::Permissions;
 
 #[derive(CommandModel, CreateCommand, Debug)]
-#[command(name = "storage", desc = "Save/Load to Storage, BotFather only")]
+#[command(
+    name = "storage",
+    desc = "Save/Load to Storage, BotFather only",
+    default_permissions = "guild_roles_manager_permissions"
+)]
 pub struct StorageCommand {
     #[command(desc = "Storage Command")]
     pub storage_command: StorageCommandOptions,
@@ -96,7 +105,12 @@ impl StorageCommand {
 }
 
 #[derive(CommandModel, CreateCommand, Debug)]
-#[command(name = "manage", desc = "Manage Guild Roles Rules")]
+#[command(
+    name = "manage",
+    desc = "Manage Guild Roles Rules",
+    default_permissions = "guild_roles_manager_permissions",
+    dm_permission = false
+)]
 pub enum ManageCommand {
     #[command(name = "add")]
     Add(AddRoleRule),
@@ -112,6 +126,11 @@ pub enum ManageCommand {
 }
 
 impl ManageCommand {
+    // pub fn create_command() -> twilight_model::application::command::Command {
+    //     Self::create_command()
+    //         .default_member_permissions(Permissions::MANAGE_ROLES)
+    //         .build()
+    // }
     /// Handle incoming `/xkcd` commands.
     pub async fn handle(
         interaction: &Interaction,
