@@ -127,7 +127,7 @@ impl ManageCommand {
         match command {
             ManageCommand::Add(command) => command.run(cache, interaction, rules).await,
             ManageCommand::Remove(command) => command.run(interaction, rules).await,
-            // ManageCommand::Edit(command) => command.run(interaction, client, rules).await,
+            ManageCommand::Edit(command) => command.run(interaction, rules).await,
             ManageCommand::List(command) => command.run(interaction, rules).await,
             _ => Ok(None),
         }
@@ -223,6 +223,47 @@ pub struct EditRoleRule {
 
     #[command(desc = "Remove Activities, `;` seperated")]
     pub remove_activities: Option<String>,
+
+    #[command(desc = "Comment")]
+    pub comment: Option<String>,
+}
+
+impl EditRoleRule {
+    pub async fn run(
+        &self,
+        interaction: &Interaction,
+        rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    ) -> Result<Option<InteractionResponseData>> {
+        let guild_id = interaction
+            .guild_id
+            .ok_or(anyhow::anyhow!("No guild id"))?
+            .get();
+        let role_id = self.role_tag.id.get();
+
+        let add_activities = self.add_activities.clone().unwrap_or("".to_string());
+        let remove_activities = self.remove_activities.clone().unwrap_or("".to_string());
+
+        let add_activities = add_activities
+            .split(";")
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>();
+        let remove_activities = remove_activities
+            .split(";")
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>();
+
+        let role_rule = rules_handler::update_role_rule(
+            rules,
+            guild_id,
+            role_id,
+            add_activities,
+            remove_activities,
+            self.comment.clone().unwrap_or("".to_string()),
+        )
+        .await?;
+
+        Ok(Some(rule_to_interaction_response_data(role_rule)))
+    }
 }
 
 #[derive(CommandModel, CreateCommand, Debug)]
@@ -282,4 +323,17 @@ impl ListRoleRule {
 
         Ok(Some(response))
     }
+}
+
+pub fn rule_to_interaction_response_data(rule: Rule) -> InteractionResponseData {
+    let mut embed = EmbedBuilder::new()
+        .color(0x2f3136) // Dark theme color, render a "transparent" background
+        .title(&rule.role_name)
+        .build();
+
+    embed.fields = vec![rule.into()];
+
+    InteractionResponseDataBuilder::new()
+        .embeds([embed])
+        .build()
 }

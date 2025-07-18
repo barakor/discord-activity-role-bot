@@ -1,5 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt::Display,
     fs::File,
     io::{BufReader, Read},
     sync::Arc,
@@ -30,6 +32,29 @@ pub fn set_rules_handler_started(started: bool) {
 pub fn is_rules_handler_started() -> bool {
     RULES_HANDLER_STARTED.load(Ordering::SeqCst)
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum RoleErrors {
+    RoleAlreadyExists(u64),
+    DefaultRuleAlreadyExists(u64),
+    NoRulesForRole(u64),
+    NoRulesForGuild(u64),
+}
+
+impl Display for RoleErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoleErrors::RoleAlreadyExists(role_id) => write!(f, "Role already exists: {}", role_id),
+            RoleErrors::DefaultRuleAlreadyExists(role_id) => {
+                write!(f, "Default rule already exists: {}", role_id)
+            }
+            RoleErrors::NoRulesForRole(role_id) => write!(f, "No rules for role: {}", role_id),
+            RoleErrors::NoRulesForGuild(guild_id) => write!(f, "No rules for guild: {}", guild_id),
+        }
+    }
+}
+
+impl Error for RoleErrors {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, CommandOption, CreateOption)]
 pub enum RoleType {
@@ -154,14 +179,14 @@ impl GuildRules {
     pub fn add_rule(&mut self, rule: Rule) -> Result<()> {
         match rule.role_type {
             RoleType::NamedActivity => match self.activities_rules.contains_key(&rule.role_id) {
-                true => Err(anyhow::anyhow!("Rule already exists")),
+                true => Err(RoleErrors::RoleAlreadyExists(rule.role_id).into()),
                 false => {
                     self.activities_rules.insert(rule.role_id, rule);
                     Ok(())
                 }
             },
             RoleType::Else => match &self.default_rule {
-                Some(_) => Err(anyhow::anyhow!("Default rule already exists")),
+                Some(_) => Err(RoleErrors::DefaultRuleAlreadyExists(rule.role_id).into()),
                 None => {
                     self.default_rule = Some(rule);
                     Ok(())
@@ -180,7 +205,7 @@ impl GuildRules {
             self.default_rule = None;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Rule not found"))
+            Err(RoleErrors::NoRulesForRole(role_id).into())
         }
     }
 
@@ -189,7 +214,7 @@ impl GuildRules {
             self.activities_rules.insert(rule.role_id, rule);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Rule not found"))
+            Err(RoleErrors::NoRulesForRole(rule.role_id).into())
         }
     }
 }
@@ -279,7 +304,7 @@ pub async fn update_roles_names(
     let mut wrtr = rules.write().await;
     let guild_rules = wrtr
         .get_mut(&guild_id)
-        .ok_or(anyhow::anyhow!("No rules for guild"))?;
+        .ok_or(RoleErrors::NoRulesForGuild(guild_id))?;
 
     guild_roles.iter().for_each(|guild_role| {
         let role_id = guild_role.id.into();
@@ -293,6 +318,35 @@ pub async fn update_roles_names(
     });
 
     Ok(())
+}
+
+pub async fn update_role_rule(
+    rules: &Arc<RwLock<BTreeMap<u64, GuildRules>>>,
+    guild_id: u64,
+    role_id: u64,
+    add_activities: BTreeSet<String>,
+    remove_activities: BTreeSet<String>,
+    comments: String,
+) -> Result<Rule> {
+    let mut wrtr = rules.write().await;
+    let guild_rules = wrtr
+        .get_mut(&guild_id)
+        .ok_or(RoleErrors::NoRulesForGuild(guild_id))?;
+
+    let rule = guild_rules
+        .get_rule_mut(role_id)
+        .ok_or(RoleErrors::NoRulesForRole(role_id))?;
+
+    let new_activities = rule
+        .activities
+        .union(&add_activities)
+        .filter(|activity| !remove_activities.contains(*activity))
+        .cloned()
+        .collect();
+    rule.activities = new_activities;
+    rule.comments = comments;
+
+    Ok(rule.clone())
 }
 
 pub fn load_rules_from_buffer<R: Read>(reader: R) -> Result<BTreeMap<u64, GuildRules>> {
