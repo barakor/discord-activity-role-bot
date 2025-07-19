@@ -377,7 +377,7 @@ pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRule
 }
 
 pub fn load_db_from_file() -> Result<BTreeMap<u64, GuildRules>> {
-    load_rules_from_file("db.csv".to_string())
+    load_rules_from_file("db/db.csv".to_string())
 }
 
 pub async fn load_rules_from_github(
@@ -426,7 +426,7 @@ pub fn save_rules_to_file(rules: &BTreeMap<u64, GuildRules>, file_path: String) 
 }
 
 pub fn save_db_to_file(rules: &BTreeMap<u64, GuildRules>) -> Result<()> {
-    save_rules_to_file(rules, "db.csv".to_string())
+    save_rules_to_file(rules, "db/db.csv".to_string())
 }
 
 pub async fn save_current_db_to_file(rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>) -> Result<()> {
@@ -452,7 +452,7 @@ pub async fn save_db_to_github(
 }
 
 pub async fn load_db(github_config: Option<&GithubConfig>) -> BTreeMap<u64, GuildRules> {
-    if let Ok(db) = load_rules_from_file("db.csv".to_string()) {
+    if let Ok(db) = load_db_from_file() {
         db
     } else if let Some(github_config) = github_config
         && let Ok(db) = load_rules_from_github(github_config).await

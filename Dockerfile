@@ -18,9 +18,10 @@ RUN rm -rf src
 
 # Now copy the actual source code
 COPY . .
+RUN cargo build --release
 
 
 EXPOSE 443
 EXPOSE 80
 
-CMD cargo run
+CMD cargo run --release

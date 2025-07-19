@@ -11,7 +11,7 @@ services:
       - "80"
     restart: unless-stopped
     volumes:
-      - csvdb:/app/db.csv
+      - csvdb:/app/db/
       - .env:/app/.env
     env_file:
       - .env

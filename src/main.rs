@@ -23,7 +23,7 @@ use twilight_model::{
         payload::outgoing::update_presence::UpdatePresencePayload,
         presence::{ActivityType, MinimalActivity, Status},
     },
-    id::{Id, marker::GuildMarker},
+    id::Id,
 };
 
 pub async fn start() -> Result<EnvConfig> {
