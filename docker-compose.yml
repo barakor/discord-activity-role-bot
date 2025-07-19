@@ -10,8 +10,14 @@ services:
       - "443"
       - "80"
     restart: unless-stopped
+    volumes:
+      - csvdb:/app/db.csv
+      - .env:/app/.env
+    env_file:
+      - .env
 
 networks:
   # The presence of these objects is sufficient to define them
   rolebot-net: {}
-
+volumes:
+  csvdb: {}

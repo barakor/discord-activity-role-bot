@@ -1,289 +1,180 @@
-use anyhow::Result;
-use governor::DefaultDirectRateLimiter;
-use governor::Quota;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::num::NonZeroU32;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use crate::{
+    config_handler::GithubConfig,
+    discord_utils::{interaction_ack, interaction_end, interaction_response, purge_guild_roles},
+    events::{easter, handle_presence_update, user_activities_from_presence},
+    interactions::command::{ManageCommand, StorageCommand},
+    rules_handler::{GuildRules, load_db, update_roles_names},
 };
-use std::time::Duration;
-use tokio::{sync::Mutex, task::JoinHandle};
+use anyhow::{Result, bail};
+use std::{
+    collections::{BTreeMap, HashMap},
+    mem,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, EventTypeFlags, Shard, StreamExt as _};
 use twilight_http::Client;
-use twilight_model::gateway::payload::incoming::GuildCreate;
-use twilight_model::gateway::payload::incoming::PresenceUpdate;
-use twilight_model::gateway::payload::outgoing::UpdatePresence;
-use twilight_model::gateway::presence::Activity;
-use twilight_model::gateway::presence::ActivityType;
-use twilight_model::gateway::presence::Status;
-use twilight_model::id::{
-    Id,
-    marker::{GuildMarker, UserMarker},
+use twilight_model::{
+    application::interaction::{Interaction, InteractionData, application_command::CommandData},
+    gateway::payload::incoming::GuildCreate,
+    id::{
+        Id,
+        marker::{GuildMarker, UserMarker},
+    },
 };
-
-use crate::discord_utils::purge_guild_roles;
-use crate::events::easter;
-use crate::events::update_roles_by_activity;
-use crate::rules_handler::{GuildRules, load_rules};
+use twilight_util::builder::InteractionResponseDataBuilder;
 
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 pub const DEBOUNCE_DELAY: Duration = Duration::from_secs(10);
 
-pub struct DebounceTask {
-    pub handle: JoinHandle<()>,
-}
-
+#[derive(Clone)]
 pub struct Bot {
     pub http_client: Arc<Client>,
-    pub rules: BTreeMap<u64, GuildRules>,
+    pub rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     pub cache: Arc<InMemoryCache>,
-    pub debounce_tasks: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), DebounceTask>>>,
-    pub presence_queue: Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), PresenceUpdate>>>,
-    pub rate_limiter: Arc<DefaultDirectRateLimiter>,
+    pub presence_update_tasks:
+        Arc<Mutex<HashMap<(Id<GuildMarker>, Id<UserMarker>), JoinHandle<()>>>>,
+    pub github_config: Option<GithubConfig>,
 }
 
 impl Bot {
-    pub fn new(http_client: Arc<Client>) -> Self {
+    pub async fn new(http_client: Arc<Client>, github_config: Option<GithubConfig>) -> Self {
         let cache = Arc::new(
             InMemoryCache::builder()
                 .resource_types(ResourceType::all())
                 .build(),
         );
-        let debounce_tasks = Arc::new(Mutex::new(HashMap::new()));
-        let rate_limiter = Arc::new(DefaultDirectRateLimiter::direct(Quota::per_minute(
-            NonZeroU32::new(10u32).unwrap(),
-        ))); // 5 role changes per second
-        let presence_queue = Arc::new(Mutex::new(HashMap::new()));
-        let rules = load_rules();
+        let presence_update_tasks = Arc::new(Mutex::new(HashMap::new()));
+        let rules = Arc::new(RwLock::new(load_db(github_config.as_ref()).await));
 
         Self {
             http_client,
             rules,
             cache,
-            debounce_tasks,
-            presence_queue,
-            rate_limiter,
+            presence_update_tasks,
+            github_config: github_config,
         }
     }
 
-    /// Function to eat up an event and decide how to handle it, runs as part of the main thread, should not block  
+    /// Function to eat up an event and decide how to handle it
     pub async fn process_event(&self, event: Event) -> Result<()> {
         match event {
             Event::PresenceUpdate(presence_update) => {
-                // self.handle_presence_update(*presence_update).await;
-
-                let mut queue = self.presence_queue.lock().await;
                 let guild_id = presence_update.guild_id;
                 let user_id = presence_update.user.id();
-                queue.insert((guild_id, user_id), *presence_update);
+                let user_activities =
+                    user_activities_from_presence(presence_update.activities.iter());
+
+                let future = handle_presence_update(
+                    self.http_client.clone(),
+                    self.rules.clone(),
+                    self.cache.clone(),
+                    self.presence_update_tasks.clone(),
+                    guild_id,
+                    user_id,
+                    user_activities,
+                );
+                tokio::spawn(future);
             }
             Event::GuildCreate(guild_create) => match *guild_create {
                 GuildCreate::Available(guild_data) => {
                     let guild_id = guild_data.id;
-                    self.guild_role_purge(guild_id).await;
-                    self.lazy_null(guild_id).await;
+                    tokio::spawn(purge_guild_roles(
+                        self.http_client.clone(),
+                        self.rules.clone(),
+                        self.cache.clone(),
+                        self.presence_update_tasks.clone(),
+                        guild_id.clone(),
+                    ));
+                    tokio::spawn(easter(self.http_client.clone(), guild_id.clone()));
+                    tokio::spawn(update_roles_names(
+                        self.rules.clone(),
+                        guild_data.roles,
+                        guild_id.into(),
+                    ));
                 }
                 GuildCreate::Unavailable(_) => (),
             },
+            Event::InteractionCreate(interaction) => {
+                let mut interaction = interaction.0;
+                let data = match mem::take(&mut interaction.data) {
+                    Some(InteractionData::ApplicationCommand(data)) => *data,
+                    _ => {
+                        tracing::warn!("ignoring non-command interaction");
+                        return Err(anyhow::format_err!("ignoring non-command interaction"));
+                    }
+                };
+                let _ = self.handle_command(interaction, data).await;
+            }
             _ => (),
         };
         Ok({})
     }
 
-    /// runs as a separate thread to handle the presence queue
-    /// locks the queue when handling it because it mutates the queue
-    pub async fn presence_update_loop_handler(&self) {
-        loop {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            let mut map = self.presence_queue.lock().await;
+    /// Handle a command interaction.
+    pub async fn handle_command(
+        &self,
+        interaction: Interaction,
+        data: CommandData,
+    ) -> anyhow::Result<()> {
+        interaction_ack(&self.http_client, &interaction).await?;
+        let response = match &*data.name {
+            "manage" => ManageCommand::handle(&interaction, data, &self.cache, &self.rules).await,
+            "storage" => {
+                StorageCommand::handle(data, &self.rules, self.github_config.as_ref()).await
+            }
+            name => bail!("unknown command: {}", name),
+        };
 
-            for ((guild_id, user_id), presence_update) in map.drain() {
-                tracing::debug!(
-                    ?guild_id,
-                    ?user_id,
-                    ?presence_update,
-                    "Processing latest activity for user:"
-                );
-                self.handle_presence_update(presence_update).await
+        match response {
+            Ok(Some(response)) => {
+                interaction_response(&self.http_client, &interaction, response).await
+            }
+            Ok(None) => interaction_end(&self.http_client, &interaction).await,
+            Err(e) => {
+                tracing::error!(?e, "error handling command");
+                let error_response = InteractionResponseDataBuilder::new()
+                    .content(format!("Error: {}", e))
+                    .build();
+                interaction_response(&self.http_client, &interaction, error_response).await
             }
         }
-    }
-
-    /// the actual logic to change roles for users based on presence
-    pub async fn handle_presence_update(&self, presence: PresenceUpdate) {
-        let guild_id = presence.guild_id;
-        let user_id = presence.user.id();
-
-        let key = (guild_id, user_id);
-        let mut tasks = self.debounce_tasks.lock().await;
-
-        // Cancel existing task if exists
-        if let Some(task) = tasks.remove(&key) {
-            task.handle.abort();
-        }
-
-        // Schedule new debounce task
-        let cache = self.cache.clone();
-        let limiter = self.rate_limiter.clone();
-        let roles_rules = self.rules.clone();
-        let http_client = self.http_client.clone();
-
-        let user_activities: BTreeSet<String> = presence
-            .activities
-            .iter()
-            .filter(|activity| activity.kind == ActivityType::Playing)
-            .map(|activity| activity.name.to_string())
-            .collect();
-
-        let task_handle = tokio::spawn(update_roles_by_activity(
-            http_client,
-            limiter,
-            cache,
-            roles_rules,
-            guild_id,
-            user_id,
-            user_activities,
-        ));
-
-        tasks.insert(
-            key,
-            DebounceTask {
-                handle: task_handle,
-            },
-        );
-    }
-
-    pub async fn guild_role_purge(&self, guild_id: Id<GuildMarker>) {
-        tokio::spawn(purge_guild_roles(
-            self.http_client.clone(),
-            self.cache.clone(),
-            self.presence_queue.clone(),
-            guild_id.clone(),
-        ));
-    }
-
-    pub async fn lazy_null(&self, guild_id: Id<GuildMarker>) {
-        tokio::spawn(easter(
-            self.http_client.clone(),
-            self.rate_limiter.clone(),
-            self.cache.clone(),
-            guild_id,
-        ));
     }
 }
 
 /// entry point for the shard to run, the "main" function
-pub async fn runner(mut shard: Shard, bot: Arc<Bot>) -> Result<Vec<JoinHandle<()>>> {
-    // Processing task
-    let presence_handler_bot = bot.clone();
-    let presence_handler_task =
-        tokio::spawn(async move { presence_handler_bot.presence_update_loop_handler().await });
-
+pub async fn runner(mut shard: Shard, bot: Arc<Bot>) {
     // Event loop
-
     while let Some(item) = shard.next_event(EventTypeFlags::all()).await {
         tracing::info!(?item, shard = ?shard.id(), "Received Event");
 
         match &item {
             Ok(event) => {
-                bot.cache.update(event);
+                let event = event.clone();
+                let bot = bot.clone();
+                tokio::spawn(async move { bot.cache.update(&event) });
             }
             _ => (),
         };
 
         match item {
             Ok(Event::GatewayClose(_)) if SHUTDOWN.load(Ordering::Relaxed) => break,
-            Ok(Event::Ready(_)) => {
-                set_shard_activity(&shard, "Rolling Roles".to_string());
+            Ok(event) => {
+                let bot = bot.clone();
+                tokio::spawn(async move { bot.process_event(event).await })
             }
-            Ok(event) => bot.process_event(event).await?,
             Err(source) => {
                 tracing::error!(?source, "error receiving event");
                 continue;
             }
         };
-    }
-
-    Ok(vec![presence_handler_task])
-}
-
-pub fn set_shard_activity(shard: &Shard, activity: String) {
-    let activity = Activity {
-        name: activity,
-        kind: ActivityType::Playing,
-        url: None,
-        created_at: None,
-        timestamps: None,
-        application_id: None,
-        details: None,
-        state: None,
-        emoji: None,
-        party: None,
-        assets: None,
-        secrets: None,
-        instance: None,
-        flags: None,
-        buttons: vec![],
-        id: None,
-    };
-
-    let presence = UpdatePresence::new(vec![activity], false, None, Status::Online).unwrap();
-
-    shard.command(&presence);
-}
-
-#[allow(unused_imports)]
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::SystemTime;
-    use tokio::time::sleep;
-
-    #[test]
-    fn test_hashmap() {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .init();
-
-        let mut h = HashMap::new();
-        h.insert(0, 69);
-        assert_eq!(h[&0], 69);
-        // tracing::debug!(?h);
-
-        h.insert(0, 42);
-        assert_eq!(h[&0], 42);
-        // tracing::debug!(?h);
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_arc_cloning() {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .init();
-        let h: Arc<Mutex<HashMap<u64, u64>>> = Arc::new(Mutex::new(HashMap::new()));
-        let h2 = h.clone();
-        let mut m = h2.lock().await;
-        m.insert(0, 42);
-        std::mem::drop(m);
-
-        let m2 = h.lock().await;
-        assert_eq!(m2[&0], 42);
-
-        tracing::debug!(?h);
-        tracing::debug!(?m2);
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn time_play() {
-        let ts = SystemTime::now();
-
-        sleep(Duration::new(2, 0)).await;
-
-        match ts.elapsed() {
-            Ok(t) => assert!(t.as_secs() > 1),
-            Err(_) => panic!("WUT"),
-        }
     }
 }
