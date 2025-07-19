@@ -387,7 +387,7 @@ pub async fn load_rules_from_github(
         get_bytes_from_github(
             &github_config.owner,
             &github_config.repo,
-            "db.csv",
+            &github_config.path,
             &github_config.branch,
         )
         .await?
@@ -445,7 +445,7 @@ pub async fn save_db_to_github(
         &bytes,
         &github_config.owner,
         &github_config.repo,
-        "db.csv",
+        &github_config.path,
         &github_config.branch,
     )
     .await
