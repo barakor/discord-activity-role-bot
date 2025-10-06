@@ -35,6 +35,9 @@ pub enum StorageCommandOptions {
 
     #[option(name = "Load from Github", value = "load-from-github")]
     LoadFromGithub,
+
+    #[option(name = "List Current", value = "list-current")]
+    ListCurrent,
 }
 use twilight_model::guild::Permissions;
 
@@ -82,11 +85,23 @@ impl StorageCommand {
             StorageCommandOptions::LoadFromFile => {
                 let mut rules_writer = rules.write().await;
                 let rules = rules_handler::load_db_from_file()?;
-                *rules_writer = rules;
-                Ok(Some(InteractionResponseData {
-                    content: Some("Rules loaded from file".to_string()),
-                    ..Default::default()
-                }))
+                *rules_writer = rules.clone();
+
+                let embeds = rules.iter().map(|(guild_id, guild_rules)| {
+                    let mut embed = EmbedBuilder::new()
+                        .color(0x2f3136) // Dark theme color, render a "transparent" background
+                        .title(format!("Guild {} Rules", guild_id))
+                        .build();
+                    embed.fields = guild_rules.clone().into();
+                    embed
+                });
+
+                let response = InteractionResponseDataBuilder::new()
+                    .content("Rules loaded from file")
+                    .embeds(embeds)
+                    .build();
+
+                Ok(Some(response))
             }
             StorageCommandOptions::LoadFromGithub => {
                 let mut rules_writer = rules.write().await;
@@ -94,11 +109,42 @@ impl StorageCommand {
                     github_config.ok_or(anyhow::anyhow!("No github config"))?,
                 )
                 .await?;
-                *rules_writer = rules;
-                Ok(Some(InteractionResponseData {
-                    content: Some("Rules loaded from github".to_string()),
-                    ..Default::default()
-                }))
+                *rules_writer = rules.clone();
+
+                let embeds = rules.iter().map(|(guild_id, guild_rules)| {
+                    let mut embed = EmbedBuilder::new()
+                        .color(0x2f3136) // Dark theme color, render a "transparent" background
+                        .title(format!("Guild {} Rules", guild_id))
+                        .build();
+                    embed.fields = guild_rules.clone().into();
+                    embed
+                });
+
+                let response = InteractionResponseDataBuilder::new()
+                    .content("Rules loaded from github")
+                    .embeds(embeds)
+                    .build();
+
+                Ok(Some(response))
+            }
+            StorageCommandOptions::ListCurrent => {
+                let rules = rules.read().await;
+
+                let embeds = rules.iter().map(|(guild_id, guild_rules)| {
+                    let mut embed = EmbedBuilder::new()
+                        .color(0x2f3136) // Dark theme color, render a "transparent" background
+                        .title(format!("Guild {} Rules", guild_id))
+                        .build();
+                    embed.fields = guild_rules.clone().into();
+                    embed
+                });
+
+                let response = InteractionResponseDataBuilder::new()
+                    .content("Current in memory")
+                    .embeds(embeds)
+                    .build();
+
+                Ok(Some(response))
             }
         }
     }
@@ -236,10 +282,10 @@ pub struct EditRoleRule {
     #[command(desc = "Role Tag")]
     pub role_tag: Role,
 
-    #[command(desc = "Add Activities, `;` seperated")]
+    #[command(desc = "Add Activities, `;` separated")]
     pub add_activities: Option<String>,
 
-    #[command(desc = "Remove Activities, `;` seperated")]
+    #[command(desc = "Remove Activities, `;` separated")]
     pub remove_activities: Option<String>,
 
     #[command(desc = "Comment")]
