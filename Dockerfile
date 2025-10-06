@@ -18,7 +18,7 @@ RUN rm -rf src
 
 # Now copy the actual source code
 COPY . .
-RUN cargo build --release
+RUN cargo build --release && echo "Cache busted at $(date)"
 
 
 EXPOSE 443

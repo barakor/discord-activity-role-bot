@@ -299,6 +299,7 @@ pub async fn update_roles_names(
     rules: Arc<RwLock<BTreeMap<u64, GuildRules>>>,
     guild_roles: Vec<Role>,
     guild_id: u64,
+    guild_name: String,
 ) -> Result<()> {
     let mut wrtr = rules.write().await;
     let guild_rules = wrtr
@@ -311,7 +312,10 @@ pub async fn update_roles_names(
         // update rule's role name
         let rule = guild_rules.get_rule_mut(role_id);
         match rule {
-            Some(rule) => rule.role_name = guild_role.name.to_string(),
+            Some(rule) => {
+                rule.role_name = guild_role.name.to_string();
+                rule.guild_name = guild_name.clone()
+            }
             None => (),
         }
     });

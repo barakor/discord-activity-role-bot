@@ -99,6 +99,7 @@ impl Bot {
                         self.rules.clone(),
                         guild_data.roles,
                         guild_id.into(),
+                        guild_data.name,
                     ));
                 }
                 GuildCreate::Unavailable(_) => (),
