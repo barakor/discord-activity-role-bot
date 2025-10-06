@@ -1,7 +1,7 @@
 guild_id,guild_name,role_id,role_name,type,activity_names,comments
 1013632559458046003,QC Tournaments,1077327783459553340,Currently Quaking,named-activity,diabotical;quake,
 1104894380080365710,Bots boots & boobs,1104894661350408274,anything else,else,,anything else
-1104894380080365710,Bots boots & boobs,1125053038474825908,Named activity (akane mountain),named-activity,akane;mountain,
+1104894380080365710,Bots boots & boobs,1125053038474825908,Named activity (akane mountain),named-activity,akane;dredge;mountain,
 140856338564513792,Not so Elite MF,955512982912249927,Currently Quaking,named-activity,diabotical;quake,
 199524231963344896,The Gang,953740335551492186,Fighting,named-activity,akane;alone,
 199524231963344896,The Gang,953740617584898138,Currently Quaking,named-activity,quake,
@@ -9,3 +9,5 @@ guild_id,guild_name,role_id,role_name,type,activity_names,comments
 496471206653067274,FighterHubIL,770345730531262475,Currently Fighting,named-activity,arcana;blazblue;brawlhalla;calibur;combat;devil daggers;dnf duel;fight;for honor;granblue;guilty gear;killer instinct;kombat;melty;rivals of aether;samurai;skullgirls;street fighter;tekken;toribash;under night;uniel;versus;vs.,
 496471206653067274,FighterHubIL,869046494882304040,Filthy Casuals,else,,Anything else
 609603874474426372,Church of Quake,1087888852280164372,Currently Quaking,named-activity,diabotical;quake,QUACK
+121456245821199316,ChrisSTARS2407,1087888852280164372,Currently Quaking,named-activity,diabotical;quake,QUACK
+696090499756326912,ChrisSTARS2407,1087888852280164372,Currently Quaking,named-activity,diabotical;quake,QUACK
