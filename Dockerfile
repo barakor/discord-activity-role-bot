@@ -10,11 +10,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir src && echo "fn main() {println!("Should Have Been Deleted");}" > src/main.rs
 
 # 3. Build dependencies only
 RUN cargo build --release
-RUN rm -rf src
+RUN rm -rf src target/release/build target/release/discord-activity-role-bot  target/release/discord-activity-role-bot.d
 
 # Now copy the actual source code
 COPY . .
