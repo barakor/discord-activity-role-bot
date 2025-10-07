@@ -13,6 +13,7 @@ services:
     volumes:
       - csvdb:/app/db/
       - .env:/app/.env
+      - buildcache:/app/target/release/
     env_file:
       - .env
 
@@ -21,3 +22,4 @@ networks:
   rolebot-net: {}
 volumes:
   csvdb: {}
+  buildcache: {}
