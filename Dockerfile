@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {println!("Should Have Been Deleted");}" > src/main.rs
+RUN mkdir src && echo 'fn main() {println!("Should Have Been Deleted");}' > src/main.rs
 
 # 3. Build dependencies only
 RUN cargo build --release
