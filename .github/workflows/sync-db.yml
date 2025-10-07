@@ -1,62 +1,60 @@
-# name: sync_db
+name: sync_db
 
-# on:
-#   push:
-#     branches:
-#       - db-data
-#     paths:
-#       - db.csv
+on:
+  # push:
+  #   branches:
+  #     - db-data
+  #   paths:
+  #     - db.csv
+  workflow_dispatch: # This makes it run manually only
 
-# jobs:
-#   sync_file:
-#     runs-on: ubuntu-latest
+jobs:
+  sync_file:
+    runs-on: ubuntu-latest
 
-#     steps:
-#       - name: Get File Content from Source Branch
-#         id: get_file
-#         uses: octokit/request-action@v2.x
-#         with:
-#           ref: db-data
-#           path: db.csv
-#           owner: ${{ github.repository_owner }}
-#           repo: ${{ github.event.repository.name }}
-#           route: GET /repos/{owner}/{repo}/contents/{path}
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Get File Content from Source Branch
+        id: get_file
+        uses: octokit/request-action@v2.x
+        with:
+          ref: db-data
+          path: db.csv
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          route: GET /repos/{owner}/{repo}/contents/{path}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get File SHA on Target Branch
+        id: get_sha
+        uses: octokit/request-action@v2.x
+        with:
+          ref: gh-pages
+          path: resources/db.csv
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          route: GET /repos/{owner}/{repo}/contents/{path}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-#       - name: Get File SHA on Target Branch
-#         id: get_sha
-#         uses: octokit/request-action@v2.x
-#         with:
-#           ref: gh-pages
-#           path: resources/db.csv
-#           owner: ${{ github.repository_owner }}
-#           repo: ${{ github.event.repository.name }}
-#           route: GET /repos/{owner}/{repo}/contents/{path}
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Base64 Encode CONTENT
+        id: encode
+        shell: bash
+        env:
+          CONTENT: ${{ fromJson(steps.get_file.outputs.data).content }}
+        run: echo "base64_data=$(echo $CONTENT | tr -d '[:space:]' )" >> $GITHUB_ENV
 
-
-#       - name: Base64 Encode CONTENT
-#         id: encode
-#         shell: bash
-#         env:
-#           CONTENT: ${{ fromJson(steps.get_file.outputs.data).content }}
-#         run: echo "base64_data=$(echo $CONTENT | tr -d '[:space:]' )" >> $GITHUB_ENV
-
-
-#       - name: Commit Updated File to Target Branch
-#         uses: octokit/request-action@v2.x
-#         with:
-#           branch: gh-pages
-#           path: resources/db.csv
-#           owner: ${{ github.repository_owner }}
-#           repo: ${{ github.event.repository.name }}
-#           route: PUT /repos/{owner}/{repo}/contents/{path}
-#           message: "Sync updated file from db-data"
-#           content: ${{ env.base64_data }} 
-#           encoding: base64
-#           sha: ${{ fromJson(steps.get_sha.outputs.data).sha }}
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit Updated File to Target Branch
+        uses: octokit/request-action@v2.x
+        with:
+          branch: gh-pages
+          path: resources/db.csv
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          route: PUT /repos/{owner}/{repo}/contents/{path}
+          message: "Sync updated file from db-data"
+          content: ${{ env.base64_data }}
+          encoding: base64
+          sha: ${{ fromJson(steps.get_sha.outputs.data).sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
