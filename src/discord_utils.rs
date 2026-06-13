@@ -76,7 +76,7 @@ pub async fn purge_guild_roles(
         );
         tokio::spawn(future);
     }
-    Ok({})
+    Ok(())
 }
 
 pub async fn interaction_ack(client: &Client, interaction: &Interaction) -> Result<()> {

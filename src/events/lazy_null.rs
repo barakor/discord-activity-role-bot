@@ -32,5 +32,5 @@ pub async fn easter(http_client: Arc<Client>, guild_id: Id<GuildMarker>) -> Resu
         .reason(&reason)
         .await?;
 
-    Ok({})
+    Ok(())
 }

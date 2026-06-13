@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
         _ = jh.await;
     }
 
-    Ok({})
+    Ok(())
 }
 
 pub fn bot_presence(activity: String) -> UpdatePresencePayload {

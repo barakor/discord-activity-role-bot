@@ -102,7 +102,7 @@ pub async fn update_roles_by_activity(
         }
     }
 
-    return None;
+    None
 }
 
 pub fn user_activities_from_presence<'a, T: Iterator<Item = &'a Activity>>(

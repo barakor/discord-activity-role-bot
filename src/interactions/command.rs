@@ -374,7 +374,7 @@ impl ListRoleRule {
             }
         };
 
-        let title = format!("Guild Rules");
+        let title = "Guild Rules".to_string();
 
         let mut embed = EmbedBuilder::new()
             .color(0x2f3136) // Dark theme color, render a "transparent" background

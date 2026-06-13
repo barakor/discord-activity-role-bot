@@ -91,17 +91,17 @@ pub struct Rule {
     pub comments: String,
 }
 
-impl Into<EmbedField> for Rule {
-    fn into(self) -> EmbedField {
-        let activities: Vec<String> = self.activities.iter().map(|x| x.to_string()).collect();
-        let rule_value = match self.role_type {
+impl From<Rule> for EmbedField {
+    fn from(val: Rule) -> Self {
+        let activities: Vec<String> = val.activities.iter().map(|x| x.to_string()).collect();
+        let rule_value = match val.role_type {
             RoleType::NamedActivity => activities.join(", "),
             RoleType::Else => "Default Role".to_string(),
         };
 
         EmbedField {
             inline: false,
-            name: self.role_name,
+            name: val.role_name,
             value: rule_value,
         }
     }
@@ -209,8 +209,8 @@ impl GuildRules {
 
     #[allow(dead_code)]
     pub fn edit_rule(&mut self, rule: Rule) -> Result<()> {
-        if self.activities_rules.contains_key(&rule.role_id) {
-            self.activities_rules.insert(rule.role_id, rule);
+        if let std::collections::btree_map::Entry::Occupied(mut e) = self.activities_rules.entry(rule.role_id) {
+            e.insert(rule);
             Ok(())
         } else {
             Err(RoleErrors::NoRulesForRole(rule.role_id).into())
@@ -218,12 +218,12 @@ impl GuildRules {
     }
 }
 
-impl Into<Vec<EmbedField>> for GuildRules {
-    fn into(self) -> Vec<EmbedField> {
-        self.activities_rules
+impl From<GuildRules> for Vec<EmbedField> {
+    fn from(val: GuildRules) -> Self {
+        val.activities_rules
             .values()
             .map(|r| r.clone().into())
-            .chain(self.default_rule.iter().map(|r| r.clone().into()))
+            .chain(val.default_rule.iter().map(|r| r.clone().into()))
             .collect()
     }
 }
@@ -254,29 +254,29 @@ impl From<CsvRow> for Rule {
     }
 }
 
-impl Into<CsvRow> for Rule {
-    fn into(self) -> CsvRow {
-        let mut activities: Vec<String> = self.activities.iter().cloned().collect();
+impl From<Rule> for CsvRow {
+    fn from(val: Rule) -> Self {
+        let mut activities: Vec<String> = val.activities.iter().cloned().collect();
         activities.sort();
         CsvRow {
-            guild_id: self.guild_id.to_string(),
-            guild_name: self.guild_name,
-            role_id: self.role_id.to_string(),
-            role_name: self.role_name,
-            role_type: self.role_type.to_str().to_string(),
+            guild_id: val.guild_id.to_string(),
+            guild_name: val.guild_name,
+            role_id: val.role_id.to_string(),
+            role_name: val.role_name,
+            role_type: val.role_type.to_str().to_string(),
             activity_names: activities.join(";"),
-            comments: self.comments,
+            comments: val.comments,
         }
     }
 }
 
-impl Into<Vec<CsvRow>> for GuildRules {
-    fn into(self) -> Vec<CsvRow> {
-        let mut rows = match self.default_rule {
+impl From<GuildRules> for Vec<CsvRow> {
+    fn from(val: GuildRules) -> Self {
+        let mut rows = match val.default_rule {
             Some(r) => vec![r.into()],
             None => vec![],
         };
-        rows.extend(self.activities_rules.values().map(|r| r.clone().into()));
+        rows.extend(val.activities_rules.values().map(|r| r.clone().into()));
         rows
     }
 }
@@ -311,12 +311,9 @@ pub async fn update_roles_names(
 
         // update rule's role name
         let rule = guild_rules.get_rule_mut(role_id);
-        match rule {
-            Some(rule) => {
-                rule.role_name = guild_role.name.to_string();
-                rule.guild_name = guild_name.clone()
-            }
-            None => (),
+        if let Some(rule) = rule {
+            rule.role_name = guild_role.name.to_string();
+            rule.guild_name = guild_name.clone()
         }
     });
 
@@ -377,7 +374,7 @@ pub fn load_rules_from_buffer<R: Read>(reader: R) -> Result<BTreeMap<u64, GuildR
 
 pub fn load_rules_from_file(file_path: String) -> Result<BTreeMap<u64, GuildRules>> {
     let file = File::open(file_path)?;
-    Ok(load_rules_from_buffer(BufReader::new(file))?)
+    load_rules_from_buffer(BufReader::new(file))
 }
 
 pub fn load_db_from_file() -> Result<BTreeMap<u64, GuildRules>> {
@@ -387,7 +384,7 @@ pub fn load_db_from_file() -> Result<BTreeMap<u64, GuildRules>> {
 pub async fn load_rules_from_github(
     github_config: &GithubConfig,
 ) -> Result<BTreeMap<u64, GuildRules>> {
-    Ok(load_rules_from_buffer(
+    load_rules_from_buffer(
         get_bytes_from_github(
             &github_config.owner,
             &github_config.repo,
@@ -396,7 +393,7 @@ pub async fn load_rules_from_github(
         )
         .await?
         .as_slice(),
-    )?)
+    )
 }
 
 pub fn rules_to_csv_bytes(rules: &BTreeMap<u64, GuildRules>) -> Result<Vec<u8>> {

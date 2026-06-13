@@ -60,7 +60,7 @@ impl Bot {
             rules,
             cache,
             presence_update_tasks,
-            github_config: github_config,
+            github_config,
         }
     }
 
@@ -92,9 +92,9 @@ impl Bot {
                         self.rules.clone(),
                         self.cache.clone(),
                         self.presence_update_tasks.clone(),
-                        guild_id.clone(),
+                        guild_id,
                     ));
-                    tokio::spawn(easter(self.http_client.clone(), guild_id.clone()));
+                    tokio::spawn(easter(self.http_client.clone(), guild_id));
                     tokio::spawn(update_roles_names(
                         self.rules.clone(),
                         guild_data.roles,
@@ -117,7 +117,7 @@ impl Bot {
             }
             _ => (),
         };
-        Ok({})
+        Ok(())
     }
 
     /// Handle a command interaction.
@@ -157,13 +157,10 @@ pub async fn runner(mut shard: Shard, bot: Arc<Bot>) {
     while let Some(item) = shard.next_event(EventTypeFlags::all()).await {
         tracing::info!(?item, shard = ?shard.id(), "Received Event");
 
-        match &item {
-            Ok(event) => {
-                let event = event.clone();
-                let bot = bot.clone();
-                tokio::spawn(async move { bot.cache.update(&event) });
-            }
-            _ => (),
+        if let Ok(event) = &item {
+            let event = event.clone();
+            let bot = bot.clone();
+            tokio::spawn(async move { bot.cache.update(&event) });
         };
 
         match item {
