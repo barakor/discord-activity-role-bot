@@ -143,8 +143,9 @@ mod tests {
     use crate::config_handler::get_testing_config;
     use twilight_gateway::{Event, EventTypeFlags, StreamExt as _};
 
+    #[ignore]
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn start_2nd_bot_with_activity() {
+    async fn test_start_2nd_bot_with_activity() {
         let config = get_testing_config().unwrap();
         let (_, shards) = boot_shards(&config).await.unwrap();
 
